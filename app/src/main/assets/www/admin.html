@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#090b10"><title>CifliX Admin</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="admin.css"></head>
+<body class="admin-body">
+<header class="topbar"><a class="brand" href="index.html"><span class="brand-mark">C</span><span>Cifli<span class="accent">X</span></span></a><nav class="nav"><a href="index.html">عرض التطبيق</a><a class="active" href="admin.html">لوحة الإدارة</a></nav><span class="admin-label">CONTROL CENTER</span></header>
+<main class="admin-wrap">
+ <div class="admin-heading"><div><span class="section-tag">CIFLIX / ADMIN</span><h1>لوحة إدارة المحتوى</h1><p>أضف العناوين ورتّب مكتبتك وصدّر بياناتها بصيغة JSON.</p></div><button class="primary" id="addBtn">＋ إضافة عنوان</button></div>
+ <section class="admin-stats"><div><span>إجمالي العناوين</span><b id="totalCount">0</b></div><div><span>أفلام</span><b id="filmCount">0</b></div><div><span>مسلسلات</span><b id="seriesCount">0</b></div><div><span>عناوين مميزة</span><b id="featuredCount">0</b></div></section>
+ <section class="admin-panel"><div class="panel-head"><div><h2>مكتبة المحتوى</h2><p>التعديلات محفوظة على هذا المتصفح حالياً.</p></div><div class="panel-actions"><input id="adminSearch" placeholder="ابحث بالاسم..."><button class="ghost" id="importBtn">استيراد JSON</button><button class="ghost" id="exportBtn">تصدير JSON</button><input type="file" id="jsonFile" accept=".json,application/json" hidden></div></div>
+ <div class="table-scroll"><table><thead><tr><th>العنوان</th><th>النوع</th><th>التصنيف</th><th>السنة</th><th>مميز</th><th>إجراءات</th></tr></thead><tbody id="adminRows"></tbody></table></div><div id="emptyAdmin" class="empty" hidden>لا توجد عناوين بعد. اضغط «إضافة عنوان» للبدء.</div></section>
+ <section class="admin-panel guide"><h2>ربط مصدر JSON خارجي</h2><p>يمكنك إدخال رابط JSON مباشر لكتالوج تملك حق استخدامه. يجب أن يسمح المصدر بطلبات المتصفح (CORS) وأن يحتوي قائمة عناوين. لا يمكن استيراد ملف إضافة CloudStream بصيغة CS3 ككتالوج أفلام.</p><div class="feed-row"><input id="feedUrl" placeholder="https://example.com/catalog.json"><button class="primary" id="loadFeed">جلب الكتالوج</button></div><p id="feedStatus" class="feed-status">الاستيراد من رابط خارجي يستبدل المكتبة المحلية بعد تأكيدك.</p></section>
+ <section class="admin-panel guide"><h2>عن تشغيل الفيديو</h2><p>حقل رابط المشاهدة يقبل رابط HLS أو MP4 تملك حق بثه. التشغيل يحتاج أن يكون الرابط متاحاً للمتصفح، وقد يحتاج HLS إلى دعم المتصفح أو مشغل متوافق. لا تُدخل روابط خاصة أو مفاتيح سرية في واجهة عامة.</p></section>
+</main>
+<div class="modal-backdrop" id="editModal"><article class="modal admin-modal"><button class="close" id="closeEdit">×</button><span class="section-tag">CONTENT EDITOR</span><h2 id="formTitle">إضافة عنوان</h2><form id="contentForm">
+ <input type="hidden" id="itemId">
+ <label>اسم الفيلم أو المسلسل<input id="fTitle" required placeholder="مثلاً: رحلة إلى المجهول"></label>
+ <div class="form-two"><label>النوع<select id="fType"><option>فيلم</option><option>مسلسل</option><option>أنمي</option></select></label><label>التصنيف<select id="fGenre"><option>أكشن</option><option>دراما</option><option>خيال علمي</option><option>كوميديا</option><option>رعب</option><option>مغامرة</option><option>وثائقي</option></select></label></div>
+ <div class="form-two"><label>السنة<input id="fYear" type="number" min="1900" max="2100" value="2026"></label><label>التقييم<input id="fRating" type="number" min="0" max="10" step=".1" value="8"></label></div>
+ <label>رابط صورة البوستر<input id="fPoster" type="url" placeholder="https://..."></label>
+ <label>رابط المشاهدة (HLS / MP4)<input id="fVideo" type="url" placeholder="https://...m3u8 أو ...mp4"></label>
+ <label>القصة<textarea id="fDesc" rows="3" placeholder="نبذة قصيرة عن العنوان"></textarea></label>
+ <label class="check-label"><input id="fFeatured" type="checkbox"> إظهار ضمن الاختيارات المميزة</label>
+ <div class="form-actions"><button class="primary" type="submit">حفظ العنوان</button><button class="ghost" type="button" id="cancelEdit">إلغاء</button></div>
+ </form></article></div>
+<script src="admin.js"></script></body></html>
