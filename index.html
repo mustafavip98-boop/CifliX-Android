@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#090b10"><title>CifliX — سينما بلمسة واحدة</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#"><span class="brand-mark">C</span><span>Cifli<span class="accent">X</span></span></a>
+  <nav class="nav"><a class="active" href="#home">الرئيسية</a><a href="#movies">الأفلام</a><a href="#series">المسلسلات</a><a href="#saved">قائمتي</a></nav>
+  <div class="actions"><label class="search"><span>⌕</span><input id="searchInput" placeholder="ابحث عن فيلم أو مسلسل..."></label><button class="avatar" title="حساب المستخدم">م</button></div>
+</header>
+<main id="home">
+  <section class="hero" id="hero"><div class="hero-shade"></div><div class="hero-content">
+      <span class="eyebrow"><i></i> اختيارات CifliX</span><p class="hero-kicker">ليلة سينمائية تبدأ من هنا</p>
+      <h1>قصص عظيمة،<br><span>على مزاجك.</span></h1>
+      <p class="hero-desc">اكتشف عالماً من الأفلام والمسلسلات بواجهة بسيطة وتجربة مشاهدة مريحة.</p>
+      <div class="hero-buttons"><button class="primary" id="heroExplore">استكشف المكتبة <b>←</b></button><button class="ghost" id="heroInfo">عن التطبيق <span>ⓘ</span></button></div>
+      <div class="hero-meta"><span>واجهة عربية</span><span>•</span><span>تجربة سلسة</span><span>•</span><span>تعمل على الهاتف والكمبيوتر</span></div>
+    </div><div class="hero-caption"><span class="caption-line"></span><span>اختيار المحرر</span></div>
+  </section>
+  <section class="quick-stats"><div><b>01</b><span>اكتشف الجديد</span></div><div><b>02</b><span>احفظ ما تحب</span></div><div><b>03</b><span>تابع بسهولة</span></div><p>سينما مرتبة، بدون تعقيد.</p></section>
+  <section class="content-section" id="movies"><div class="section-head"><div><span class="section-tag">مكتبة Ciflix</span><h2>تصفّح حسب مزاجك</h2></div><div class="filters" id="filters"><button class="filter active" data-filter="الكل">الكل</button><button class="filter" data-filter="أكشن">أكشن</button><button class="filter" data-filter="دراما">دراما</button><button class="filter" data-filter="خيال علمي">خيال علمي</button><button class="filter" data-filter="كوميديا">كوميديا</button></div></div>
+    <div class="section-sub"><span>مختارات مقترحة</span><span id="resultCount">6 عناوين</span></div><div class="movie-grid" id="movieGrid"></div>
+  </section>
+  <section class="wide-promo" id="series"><div><span class="section-tag">قريباً في CifliX</span><h2>مسلسلاتك المفضلة<br>في مكان واحد.</h2><p>جهّز قائمتك وتابع المواسم والحلقات من واجهة موحّدة.</p></div><div class="promo-art"><span>YOUR NEXT<br><b>STORY</b></span><i>✦</i></div></section>
+  <section class="content-section saved-section" id="saved"><div class="section-head"><div><span class="section-tag">مكتبتك الخاصة</span><h2>قائمتي</h2></div><span class="muted">العناوين التي حفظتها</span></div><div class="movie-grid" id="savedGrid"><div class="empty">بعدك ما ضفت شي لقائمتك. احفظ عنوان يعجبك حتى يظهر هنا.</div></div></section>
+</main>
+<footer><a class="brand small" href="#"><span class="brand-mark">C</span><span>Cifli<span class="accent">X</span></span></a><span>واجهة مستقلة • استخدم فقط مصادر المحتوى المصرّح بها.</span><span>© 2026 CifliX</span></footer>
+<div class="modal-backdrop" id="modal"><article class="modal"><button class="close" id="closeModal">×</button><div id="modalBody"></div></article></div>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script><script src="config.js"></script><script src="app.js"></script>
+</body></html>
