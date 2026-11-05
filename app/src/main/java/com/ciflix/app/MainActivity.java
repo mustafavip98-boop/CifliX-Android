@@ -5,16 +5,14 @@ import android.os.*;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.content.*;
+import android.net.Uri;
 import android.view.*;
 import android.view.inputmethod.EditorInfo;
 import android.widget.*;
-import android.content.*;
-import android.net.Uri;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.*;
 import com.google.android.material.card.MaterialCardView;
-import com.google.android.material.button.MaterialButton;
-import com.google.android.material.textfield.TextInputEditText;
 import com.bumptech.glide.Glide;
 import okhttp3.*;
 import org.json.*;
@@ -28,34 +26,164 @@ import java.util.concurrent.TimeUnit;
 
 @UnstableApi
 public class MainActivity extends AppCompatActivity {
-    private final int BG=Color.rgb(13,16,22), PANEL=Color.rgb(24,29,38), GOLD=Color.rgb(232,184,92), MUTED=Color.rgb(151,160,174), WHITE=Color.WHITE;
-    private final OkHttpClient http=new OkHttpClient.Builder().connectTimeout(18,TimeUnit.SECONDS).readTimeout(25,TimeUnit.SECONDS).build();
-    private String apiBase=""; private LinearLayout root,content; private TextView status; private final ArrayList<JSONObject> movies=new ArrayList<>(), series=new ArrayList<>(); private final ArrayList<PosterAdapter> adapters=new ArrayList<>(); private ExoPlayer player;
-    @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);getWindow().getDecorView().setSystemUiVisibility(0);apiBase=getSharedPreferences("ciflix",MODE_PRIVATE).getString("api_base","");buildUI();loadAll();}
-    private GradientDrawable shape(int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(radius);return d;}
-    private TextView text(String s,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);t.setGravity(Gravity.CENTER_VERTICAL);if(bold)t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);return t;}
-    private int dp(float v){return (int)(v*getResources().getDisplayMetrics().density+.5f);}
-    private void buildUI(){
-        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);root=new LinearLayout(this);root.setOrientation(1);root.setBackgroundColor(BG);scroll.addView(root);setContentView(scroll);
-        LinearLayout top=new LinearLayout(this);top.setGravity(Gravity.CENTER_VERTICAL);top.setPadding(dp(20),dp(18),dp(20),dp(12));root.addView(top);
-        TextView logo=text("Cifli",25,WHITE,true);TextView x=text("X",25,GOLD,true);top.addView(logo);top.addView(x);View spacer=new View(this);top.addView(spacer,new LinearLayout.LayoutParams(0,1,1));
-        TextView settings=text("⚙",23,WHITE,true);settings.setGravity(Gravity.CENTER);top.addView(settings,new LinearLayout.LayoutParams(dp(44),dp(44)));settings.setOnClickListener(v->settings());
-        TextInputEditText search=new TextInputEditText(this);search.setSingleLine(true);search.setTextColor(WHITE);search.setHintTextColor(MUTED);search.setHint("ابحث عن فيلم أو مسلسل");search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);search.setPadding(dp(16),0,dp(16),0);search.setBackground(shape(PANEL,dp(14)));LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,dp(52));sp.setMargins(dp(18),0,dp(18),dp(18));root.addView(search,sp);search.setOnEditorActionListener((v,a,e)->{if(a==EditorInfo.IME_ACTION_SEARCH){search(search.getText().toString());return true;}return false;});
-        MaterialCardView hero=new MaterialCardView(this);hero.setRadius(dp(22));hero.setCardBackgroundColor(Color.rgb(34,37,44));hero.setStrokeColor(Color.rgb(74,63,45));hero.setStrokeWidth(dp(1));LinearLayout h=new LinearLayout(this);h.setOrientation(1);h.setPadding(dp(22),dp(22),dp(22),dp(22));hero.addView(h);TextView tag=text("CIFLIX  •  YOUR CINEMA",11,GOLD,true);h.addView(tag);TextView headline=text("ليلتك تستاهل\\nفيلم.",29,WHITE,true);LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-1,-2);hp.topMargin=dp(10);h.addView(headline,hp);TextView sub=text("اكتشف مكتبة أفلامك ومسلسلاتك المفضلة",13,MUTED,false);hp=new LinearLayout.LayoutParams(-1,-2);hp.topMargin=dp(8);h.addView(sub,hp);LinearLayout.LayoutParams he=new LinearLayout.LayoutParams(-1,-2);he.setMargins(dp(16),0,dp(16),dp(24));root.addView(hero,he);
-        status=text("نتصل بالمكتبة...",13,MUTED,false);status.setPadding(dp(20),dp(6),dp(20),dp(6));root.addView(status);
-        addSection("أحدث الأفلام",movies,"latest-movies");addSection("مسلسلات تستحق المتابعة",series,"latest-series");
-        TextView footer=text("CIFLIX  •  مشاهدة ممتعة",11,MUTED,false);footer.setGravity(Gravity.CENTER);footer.setPadding(0,dp(30),0,dp(90));root.addView(footer);
-        LinearLayout nav=new LinearLayout(this);nav.setBackgroundColor(Color.rgb(18,22,29));nav.setGravity(Gravity.CENTER);String[] labels={"⌂  الرئيسية","▣  أفلام","▤  مسلسلات","♡  قائمتي"};for(String l:labels){TextView n=text(l,12,WHITE,true);n.setGravity(Gravity.CENTER);nav.addView(n,new LinearLayout.LayoutParams(0,dp(58),1));}FrameLayout frame=new FrameLayout(this);frame.addView(scroll);FrameLayout.LayoutParams np=new FrameLayout.LayoutParams(-1,dp(62),Gravity.BOTTOM);frame.addView(nav,np);setContentView(frame);
+    private static final int BG=Color.rgb(9,12,18), PANEL=Color.rgb(20,25,34), GOLD=Color.rgb(225,177,87), MUTED=Color.rgb(155,164,178), WHITE=Color.WHITE;
+    private final OkHttpClient http=new OkHttpClient.Builder().connectTimeout(15,TimeUnit.SECONDS).readTimeout(25,TimeUnit.SECONDS).build();
+    private String apiBase="";
+    private FrameLayout frame;
+    private LinearLayout page;
+    private TextView status;
+    private final ArrayList<JSONObject> movies=new ArrayList<>(), series=new ArrayList<>(), searchResults=new ArrayList<>();
+    private final Set<String> favorites=new HashSet<>();
+    private final ArrayList<PosterAdapter> adapters=new ArrayList<>();
+    private ExoPlayer player;
+    private PlayerView playerView;
+    private int currentTab=0;
+    private String lastSearch="";
+
+    @Override public void onCreate(Bundle state){
+        super.onCreate(state);
+        getWindow().setStatusBarColor(BG); getWindow().setNavigationBarColor(BG);
+        getWindow().getDecorView().setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        apiBase=getSharedPreferences("ciflix",MODE_PRIVATE).getString("api_base","");
+        favorites.addAll(getSharedPreferences("ciflix",MODE_PRIVATE).getStringSet("favorites",new HashSet<>()));
+        showHome();
     }
-    private void addSection(String title,ArrayList<JSONObject> data,String key){LinearLayout block=new LinearLayout(this);block.setOrientation(1);block.setPadding(0,dp(8),0,dp(18));TextView heading=text(title,19,WHITE,true);heading.setPadding(dp(20),dp(8),dp(20),dp(14));block.addView(heading);RecyclerView rv=new RecyclerView(this);rv.setLayoutManager(new LinearLayoutManager(this,RecyclerView.HORIZONTAL,false));PosterAdapter adapter=new PosterAdapter(data);adapters.add(adapter);rv.setAdapter(adapter);rv.setPadding(dp(14),0,dp(14),0);rv.setClipToPadding(false);block.addView(rv,new LinearLayout.LayoutParams(-1,dp(224)));root.addView(block);}
-    private void request(String path, okhttp3.Callback cb){if(apiBase.isEmpty()){runOnUiThread(()->status.setText("اربط عنوان API من ⚙ حتى تظهر المكتبة."));return;}Request req=new Request.Builder().url(apiBase.replaceAll("/$","")+path).header("Accept","application/json").build();http.newCall(req).enqueue(cb);}
-    private void loadAll(){load("latest-movies",movies);load("latest-series",series);}
-    private void load(String section,ArrayList<JSONObject> target){request("/home?section="+section+"&page=1&limit=30",new Callback(){public void onFailure(Call c,IOException e){runOnUiThread(()->status.setText("تعذر الاتصال بالخادم. تحقق من رابط API والإنترنت."));}public void onResponse(Call c,Response r)throws IOException{try{JSONObject o=new JSONObject(r.body().string());JSONArray a=o.optJSONArray("items");target.clear();if(a!=null)for(int i=0;i<a.length();i++)target.add(a.getJSONObject(i));runOnUiThread(()->{for(PosterAdapter adapter:adapters)adapter.notifyDataSetChanged();status.setText("مكتبتك جاهزة • "+(movies.size()+series.size())+" عنوان");});}catch(Exception e){runOnUiThread(()->status.setText("وصل رد غير مفهوم من الخادم."));}}});}
-    private void search(String q){if(q.trim().isEmpty())return;request("/search?q="+Uri.encode(q),new Callback(){public void onFailure(Call c,IOException e){runOnUiThread(()->status.setText("فشل البحث."));}public void onResponse(Call c,Response r)throws IOException{try{JSONArray a=new JSONObject(r.body().string()).optJSONArray("items");ArrayList<JSONObject> found=new ArrayList<>();if(a!=null)for(int i=0;i<a.length();i++)found.add(a.getJSONObject(i));runOnUiThread(()->new AlertDialog.Builder(MainActivity.this).setTitle("نتائج البحث").setMessage(found.size()+" نتيجة متاحة.").setPositiveButton("حسناً",null).show());}catch(Exception ignored){}}});}
-    private void settings(){EditText input=new EditText(this);input.setSingleLine(true);input.setHint("https://your-api-domain.com/api");input.setText(apiBase);new AlertDialog.Builder(this).setTitle("إعداد اتصال CifliX").setMessage("أدخل رابط API العام").setView(input).setNegativeButton("إلغاء",null).setPositiveButton("حفظ",(d,w)->{apiBase=input.getText().toString().trim().replaceAll("/$","");getSharedPreferences("ciflix",MODE_PRIVATE).edit().putString("api_base",apiBase).apply();loadAll();}).show();}
-    private class PosterAdapter extends RecyclerView.Adapter<PosterAdapter.H>{ArrayList<JSONObject> list;PosterAdapter(ArrayList<JSONObject> l){list=l;}class H extends RecyclerView.ViewHolder{ImageView img;TextView title,meta;H(View v){super(v);img=v.findViewById(1);title=v.findViewById(2);meta=v.findViewById(3);}}
-        public H onCreateViewHolder(android.view.ViewGroup p,int t){LinearLayout card=new LinearLayout(MainActivity.this);card.setOrientation(1);card.setPadding(dp(5),dp(3),dp(5),dp(3));ImageView image=new ImageView(MainActivity.this);image.setId(1);image.setScaleType(ImageView.ScaleType.CENTER_CROP);card.addView(image,new LinearLayout.LayoutParams(dp(126),dp(158)));TextView name=text("",13,WHITE,true);name.setId(2);name.setMaxLines(1);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(126),dp(28));lp.topMargin=dp(5);card.addView(name,lp);TextView meta=text("CIFLIX",10,MUTED,false);meta.setId(3);card.addView(meta);return new H(card);}
-        public void onBindViewHolder(H h,int pos){JSONObject o=list.get(pos);String name=o.optString("title","بدون عنوان"),poster=o.optString("poster","");h.title.setText(name);h.meta.setText(o.optString("type","movie").equals("series")?"مسلسل":"فيلم");Glide.with(MainActivity.this).load(poster).placeholder(shape(PANEL,dp(12))).centerCrop().into(h.img);h.itemView.setOnClickListener(v->details(o));}public int getItemCount(){return list.size();}}
-    private void details(JSONObject item){String id=item.optString("id");new AlertDialog.Builder(this).setTitle(item.optString("title","CifliX")).setMessage("العنوان جاهز في مكتبة CifliX. سيتم فتح تفاصيله ومصادر المشاهدة بعد ربط خدمة البيانات.").setPositiveButton("حسناً",null).show();}
-    @Override protected void onDestroy(){if(player!=null){player.release();player=null;}super.onDestroy();}
+    private int dp(float v){return (int)(v*getResources().getDisplayMetrics().density+.5f);}
+    private GradientDrawable bg(int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
+    private GradientDrawable gradient(int a,int b,int radius){GradientDrawable d=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{a,b});d.setCornerRadius(dp(radius));return d;}
+    private TextView label(String value,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(value);t.setTextSize(size);t.setTextColor(color);t.setGravity(Gravity.CENTER_VERTICAL);if(bold)t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);return t;}
+    private LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);return l;}
+    private LinearLayout row(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.HORIZONTAL);l.setGravity(Gravity.CENTER_VERTICAL);return l;}
+    private void basePage(){
+        frame=new FrameLayout(this);frame.setBackgroundColor(BG);page=column();ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setClipToPadding(false);scroll.addView(page);frame.addView(scroll,new FrameLayout.LayoutParams(-1,-1));setContentView(frame);
+    }
+    private void showHome(){
+        currentTab=0; adapters.clear(); basePage();
+        LinearLayout top=row();top.setPadding(dp(20),dp(18),dp(20),dp(10));page.addView(top);
+        TextView logo=label("Cifli",27,WHITE,true),x=label("X",27,GOLD,true);top.addView(logo);top.addView(x);
+        View gap=new View(this);top.addView(gap,new LinearLayout.LayoutParams(0,1,1));
+        TextView profile=label("●",19,GOLD,true);profile.setGravity(Gravity.CENTER);top.addView(profile,new LinearLayout.LayoutParams(dp(42),dp(42)));
+        EditText search=new EditText(this);search.setSingleLine(true);search.setTextColor(WHITE);search.setHintTextColor(MUTED);search.setHint("ابحث عن فيلم أو مسلسل");search.setTextSize(14);search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);search.setPadding(dp(16),0,dp(16),0);search.setBackground(bg(PANEL,13));LinearLayout.LayoutParams searchLp=new LinearLayout.LayoutParams(-1,dp(50));searchLp.setMargins(dp(18),dp(8),dp(18),dp(18));page.addView(search,searchLp);
+        search.setOnEditorActionListener((v,a,e)->{if(a==EditorInfo.IME_ACTION_SEARCH){runSearch(search.getText().toString());return true;}return false;});
+        buildHero();
+        status=label(apiBase.isEmpty()?"أهلاً بك في عالم CifliX":"جارٍ تحميل مكتبتك...",12,MUTED,false);status.setPadding(dp(20),dp(8),dp(20),dp(8));page.addView(status);
+        addShelf("اختيارات CifliX",movies);
+        addShelf("أحدث الأفلام",movies);
+        addShelf("مسلسلات تستحق المتابعة",series);
+        addShelf("أكمل المشاهدة",new ArrayList<JSONObject>());
+        TextView footer=label("CIFLIX  •  عالم الترفيه بين يديك",10,MUTED,true);footer.setGravity(Gravity.CENTER);footer.setPadding(0,dp(22),0,dp(100));page.addView(footer);
+        addBottomNav();
+        loadLibrary();
+    }
+    private void buildHero(){
+        MaterialCardView card=new MaterialCardView(this);card.setRadius(dp(22));card.setCardElevation(dp(3));card.setCardBackgroundColor(Color.rgb(30,31,37));
+        LinearLayout hero=column();hero.setPadding(dp(22),dp(24),dp(22),dp(22));hero.setBackground(gradient(Color.rgb(48,35,29),Color.rgb(16,20,29),22));
+        TextView eyebrow=label("C I F L I X   ORIGINAL EXPERIENCE",10,GOLD,true);hero.addView(eyebrow);
+        TextView title=label("ليلتك…\nتستاهل قصة عظيمة",27,WHITE,true);LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(-1,-2);tp.topMargin=dp(14);hero.addView(title,tp);
+        TextView sub=label("اكتشف أفلاماً ومسلسلات تعيش تفاصيلها",12,Color.rgb(211,211,214),false);tp=new LinearLayout.LayoutParams(-1,-2);tp.topMargin=dp(8);hero.addView(sub,tp);
+        TextView action=label("استكشف المكتبة   ←",12,BG,true);action.setGravity(Gravity.CENTER);action.setBackground(bg(GOLD,9));tp=new LinearLayout.LayoutParams(dp(160),dp(42));tp.topMargin=dp(18);hero.addView(action,tp);action.setOnClickListener(v->{currentTab=1;showCategory("أحدث الأفلام",movies);});
+        card.addView(hero);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);cp.setMargins(dp(16),dp(4),dp(16),dp(16));page.addView(card,cp);
+    }
+    private void addShelf(String title,ArrayList<JSONObject> data){
+        LinearLayout block=column();block.setPadding(0,dp(8),0,dp(12));
+        LinearLayout heading=row();heading.setPadding(dp(20),0,dp(20),dp(10));
+        TextView name=label(title,18,WHITE,true);heading.addView(name,new LinearLayout.LayoutParams(0,-2,1));
+        TextView more=label("عرض الكل  ‹",11,GOLD,true);heading.addView(more);more.setOnClickListener(v->showCategory(title,data));
+        block.addView(heading);
+        RecyclerView rv=new RecyclerView(this);rv.setLayoutManager(new LinearLayoutManager(this,RecyclerView.HORIZONTAL,false));rv.setNestedScrollingEnabled(false);rv.setClipToPadding(false);rv.setPadding(dp(13),0,dp(13),0);
+        PosterAdapter adapter=new PosterAdapter(data);adapters.add(adapter);rv.setAdapter(adapter);block.addView(rv,new LinearLayout.LayoutParams(-1,dp(224)));
+        page.addView(block);
+    }
+    private void addBottomNav(){
+        LinearLayout nav=row();nav.setBackgroundColor(Color.rgb(15,19,27));nav.setElevation(dp(14));
+        String[] names={"الرئيسية","أفلام","مسلسلات","قائمتي"};String[] icons={"⌂","▣","▤","♡"};
+        for(int i=0;i<names.length;i++){final int tab=i;LinearLayout item=column();item.setGravity(Gravity.CENTER);TextView ic=label(icons[i],19,i==currentTab?GOLD:MUTED,true);ic.setGravity(Gravity.CENTER);TextView tx=label(names[i],10,i==currentTab?GOLD:MUTED,i==currentTab);tx.setGravity(Gravity.CENTER);item.addView(ic);item.addView(tx);nav.addView(item,new LinearLayout.LayoutParams(0,dp(58),1));item.setOnClickListener(v->onTab(tab));}
+        FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(-1,dp(62),Gravity.BOTTOM);frame.addView(nav,p);
+    }
+    private void onTab(int tab){currentTab=tab;if(tab==0)showHome();else if(tab==1)showCategory("الأفلام",movies);else if(tab==2)showCategory("المسلسلات",series);else showFavorites();}
+    private void loadLibrary(){
+        if(apiBase.isEmpty()){if(status!=null)status.setText("المعاينة جاهزة • اربط الخادم لإظهار مكتبتك الفعلية");return;}
+        loadSection("latest-movies",movies);loadSection("latest-series",series);
+    }
+    private void request(String path,Callback callback){
+        if(apiBase.isEmpty()){runOnUiThread(()->new AlertDialog.Builder(this).setTitle("اربط مكتبة CifliX").setMessage("أدخل رابط الخادم من الإعدادات حتى تظهر عناوين مكتبتك.").setPositiveButton("الإعدادات",(d,w)->settings()).setNegativeButton("لاحقاً",null).show());return;}
+        Request request=new Request.Builder().url(apiBase.replaceAll("/$","")+path).header("Accept","application/json").build();http.newCall(request).enqueue(callback);
+    }
+    private void loadSection(String key,ArrayList<JSONObject> target){
+        request("/home?section="+key+"&page=1&limit=30",new Callback(){
+            public void onFailure(Call c,IOException e){runOnUiThread(()->{if(status!=null)status.setText("تعذر الاتصال بالخادم حالياً");});}
+            public void onResponse(Call c,Response r)throws IOException{try{if(!r.isSuccessful())throw new IOException("HTTP "+r.code());JSONObject data=new JSONObject(r.body().string());JSONArray arr=data.optJSONArray("items");target.clear();if(arr!=null)for(int i=0;i<arr.length();i++)target.add(arr.getJSONObject(i));runOnUiThread(()->{for(PosterAdapter a:adapters)a.notifyDataSetChanged();if(status!=null)status.setText("مكتبتك جاهزة • "+(movies.size()+series.size())+" عنوان");});}catch(Exception ex){runOnUiThread(()->{if(status!=null)status.setText("تعذر قراءة بيانات المكتبة");});}}
+        });
+    }
+    private class PosterAdapter extends RecyclerView.Adapter<PosterAdapter.Holder>{
+        final ArrayList<JSONObject> data;PosterAdapter(ArrayList<JSONObject> d){data=d;}
+        class Holder extends RecyclerView.ViewHolder{ImageView image;TextView title,meta;Holder(View v){super(v);image=v.findViewById(101);title=v.findViewById(102);meta=v.findViewById(103);}}
+        public Holder onCreateViewHolder(android.view.ViewGroup parent,int type){
+            LinearLayout card=column();card.setPadding(dp(5),dp(2),dp(5),dp(2));
+            ImageView image=new ImageView(MainActivity.this);image.setId(101);image.setScaleType(ImageView.ScaleType.CENTER_CROP);image.setBackground(bg(PANEL,10));card.addView(image,new LinearLayout.LayoutParams(dp(128),dp(160)));
+            TextView title=label("",12,WHITE,true);title.setId(102);title.setMaxLines(1);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(dp(128),dp(25));p.topMargin=dp(5);card.addView(title,p);
+            TextView meta=label("CIFLIX",10,MUTED,false);meta.setId(103);card.addView(meta);
+            return new Holder(card);
+        }
+        public void onBindViewHolder(Holder h,int pos){JSONObject o=data.get(pos);h.title.setText(o.optString("title","بدون عنوان"));h.meta.setText(o.optString("type","movie").equals("series")?"مسلسل":"فيلم");Glide.with(MainActivity.this).load(o.optString("poster","")).centerCrop().placeholder(bg(PANEL,10)).into(h.image);h.itemView.setOnClickListener(v->showDetails(o));}
+        public int getItemCount(){return data.size();}
+    }
+    private void showCategory(String title,ArrayList<JSONObject> data){
+        adapters.clear();basePage();LinearLayout head=row();head.setPadding(dp(20),dp(22),dp(20),dp(18));TextView back=label("‹",28,GOLD,true);head.addView(back);back.setOnClickListener(v->showHome());TextView name=label(title,22,WHITE,true);LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(0,-2,1);np.setMargins(dp(12),0,0,0);head.addView(name,np);page.addView(head);
+        RecyclerView list=new RecyclerView(this);list.setLayoutManager(new GridLayoutManager(this,3));list.setPadding(dp(10),0,dp(10),dp(90));list.setClipToPadding(false);list.setAdapter(new GridAdapter(data));page.addView(list,new LinearLayout.LayoutParams(-1,-1));
+        addBottomNav();
+    }
+    private class GridAdapter extends RecyclerView.Adapter<GridAdapter.GH>{
+        final ArrayList<JSONObject> data;GridAdapter(ArrayList<JSONObject> d){data=d;}
+        class GH extends RecyclerView.ViewHolder{ImageView img;TextView title;GH(View v){super(v);img=v.findViewById(201);title=v.findViewById(202);}}
+        public GH onCreateViewHolder(android.view.ViewGroup p,int t){LinearLayout c=column();c.setPadding(dp(4),dp(5),dp(4),dp(8));ImageView i=new ImageView(MainActivity.this);i.setId(201);i.setScaleType(ImageView.ScaleType.CENTER_CROP);c.addView(i,new LinearLayout.LayoutParams(-1,dp(150)));TextView n=label("",11,WHITE,true);n.setId(202);n.setMaxLines(1);c.addView(n);return new GH(c);}
+        public void onBindViewHolder(GH h,int pos){JSONObject o=data.get(pos);h.title.setText(o.optString("title"));Glide.with(MainActivity.this).load(o.optString("poster")).centerCrop().placeholder(bg(PANEL,8)).into(h.img);h.itemView.setOnClickListener(v->showDetails(o));}
+        public int getItemCount(){return data.size();}
+    }
+    private void runSearch(String query){
+        if(query.trim().isEmpty())return;lastSearch=query;searchResults.clear();
+        request("/search?q="+Uri.encode(query.trim())+"&page=1",new Callback(){
+            public void onFailure(Call c,IOException e){runOnUiThread(()->toast("تعذر تنفيذ البحث"));}
+            public void onResponse(Call c,Response r)throws IOException{try{JSONObject obj=new JSONObject(r.body().string());JSONArray a=obj.optJSONArray("items");if(a!=null)for(int i=0;i<a.length();i++)searchResults.add(a.getJSONObject(i));runOnUiThread(()->showCategory("نتائج: "+query,searchResults));}catch(Exception e){runOnUiThread(()->toast("تعذر قراءة نتائج البحث"));}}
+        });
+    }
+    private void showFavorites(){ArrayList<JSONObject> list=new ArrayList<>();for(JSONObject o:movies)if(favorites.contains(o.optString("id")))list.add(o);for(JSONObject o:series)if(favorites.contains(o.optString("id")))list.add(o);showCategory("قائمتي",list);}
+    private void showDetails(JSONObject item){
+        String id=item.optString("id");if(id.isEmpty()){toast("معرّف المحتوى غير متوفر");return;}
+        request("/title/"+Uri.encode(id),new Callback(){
+            public void onFailure(Call c,IOException e){runOnUiThread(()->toast("تعذر تحميل التفاصيل"));}
+            public void onResponse(Call c,Response r)throws IOException{try{JSONObject details=new JSONObject(r.body().string());runOnUiThread(()->detailsScreen(details));}catch(Exception e){runOnUiThread(()->toast("بيانات التفاصيل غير صالحة"));}}
+        });
+    }
+    private void detailsScreen(JSONObject o){
+        basePage();TextView back=label("‹   رجوع",14,GOLD,true);back.setPadding(dp(20),dp(18),dp(20),dp(14));page.addView(back);back.setOnClickListener(v->showHome());
+        ImageView poster=new ImageView(this);poster.setScaleType(ImageView.ScaleType.CENTER_CROP);Glide.with(this).load(o.optString("poster")).into(poster);LinearLayout.LayoutParams pp=new LinearLayout.LayoutParams(dp(170),dp(240));pp.gravity=Gravity.CENTER_HORIZONTAL;page.addView(poster,pp);
+        TextView title=label(o.optString("title"),24,WHITE,true);title.setGravity(Gravity.CENTER);title.setPadding(dp(20),dp(16),dp(20),dp(5));page.addView(title);
+        TextView meta=label(o.optString("year","")+"   •   ★ "+o.optString("rating","—")+"   •   "+o.optString("type"),12,GOLD,true);meta.setGravity(Gravity.CENTER);page.addView(meta);
+        TextView desc=label(o.optString("overview","لا يوجد وصف متاح حالياً."),13,MUTED,false);desc.setGravity(Gravity.TOP|Gravity.RIGHT);desc.setPadding(dp(22),dp(18),dp(22),dp(18));page.addView(desc);
+        LinearLayout actions=row();actions.setPadding(dp(20),dp(8),dp(20),dp(18));TextView play=actionButton("▶   تشغيل",GOLD,BG);actions.addView(play,new LinearLayout.LayoutParams(0,dp(48),1));TextView fav=actionButton(favorites.contains(o.optString("id"))?"♥":"♡   قائمتي",PANEL,WHITE);LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(0,dp(48),1);fp.setMargins(dp(10),0,0,0);actions.addView(fav,fp);page.addView(actions);
+        play.setOnClickListener(v->loadStreams(o.optString("id"),null));fav.setOnClickListener(v->{String id=o.optString("id");if(!favorites.add(id))favorites.remove(id);getSharedPreferences("ciflix",MODE_PRIVATE).edit().putStringSet("favorites",new HashSet<>(favorites)).apply();fav.setText(favorites.contains(id)?"♥   محفوظ":"♡   قائمتي");});
+        JSONArray eps=o.optJSONArray("episodes");if(eps!=null&&eps.length()>0){TextView sh=label("الحلقات",18,WHITE,true);sh.setPadding(dp(20),dp(12),dp(20),dp(10));page.addView(sh);for(int i=0;i<eps.length();i++){JSONObject ep=eps.optJSONObject(i);if(ep==null)continue;TextView e=label("الحلقة "+ep.optInt("episode")+"     الموسم "+ep.optInt("season"),13,WHITE,false);e.setPadding(dp(20),dp(13),dp(20),dp(13));page.addView(e);e.setOnClickListener(v->loadStreams(o.optString("id"),ep.optString("id")));}}
+        addBottomNav();
+    }
+    private TextView actionButton(String s,int color,int fg){TextView t=label(s,13,fg,true);t.setGravity(Gravity.CENTER);t.setBackground(bg(color,10));return t;}
+    private void loadStreams(String id,String episode){
+        String path="/title/"+Uri.encode(id)+"/streams"+(episode==null?"":"?episode_id="+Uri.encode(episode));
+        request(path,new Callback(){public void onFailure(Call c,IOException e){runOnUiThread(()->toast("تعذر جلب مصادر التشغيل"));}public void onResponse(Call c,Response r)throws IOException{try{JSONObject obj=new JSONObject(r.body().string());JSONArray arr=obj.optJSONArray("streams");if(arr==null||arr.length()==0)throw new Exception("no streams");JSONObject stream=arr.getJSONObject(0);runOnUiThread(()->playVideo(stream.optString("url")));}catch(Exception e){runOnUiThread(()->toast("لا يوجد رابط تشغيل متاح"));}}});
+    }
+    private void playVideo(String url){
+        if(url==null||!(url.startsWith("https://")||url.startsWith("http://"))){toast("رابط الفيديو غير صالح");return;}
+        basePage();TextView back=label("‹   إغلاق المشغل",14,GOLD,true);back.setPadding(dp(18),dp(16),dp(18),dp(16));page.addView(back);back.setOnClickListener(v->{releasePlayer();showHome();});
+        playerView=new PlayerView(this);playerView.setUseController(true);page.addView(playerView,new LinearLayout.LayoutParams(-1,dp(240)));
+        player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);player.setMediaItem(MediaItem.fromUri(Uri.parse(url)));player.prepare();player.play();
+        TextView note=label("CifliX Player",13,MUTED,true);note.setGravity(Gravity.CENTER);note.setPadding(0,dp(20),0,0);page.addView(note);
+    }
+    private void releasePlayer(){if(player!=null){player.release();player=null;}playerView=null;}
+    private void settings(){
+        EditText input=new EditText(this);input.setSingleLine(true);input.setHint("https://your-domain.com/api");input.setText(apiBase);input.setTextColor(WHITE);
+        new AlertDialog.Builder(this).setTitle("إعدادات CifliX").setMessage("رابط خادم المكتبة").setView(input).setNegativeButton("إلغاء",null).setPositiveButton("حفظ",(d,w)->{apiBase=input.getText().toString().trim().replaceAll("/$","");getSharedPreferences("ciflix",MODE_PRIVATE).edit().putString("api_base",apiBase).apply();showHome();}).show();
+    }
+    private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
+    @Override public void onBackPressed(){if(player!=null){releasePlayer();showHome();}else showHome();}
+    @Override protected void onDestroy(){releasePlayer();super.onDestroy();}
 }
