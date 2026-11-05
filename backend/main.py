@@ -14,7 +14,7 @@ ADMIN_TOKEN = os.getenv("CIFLIX_ADMIN_TOKEN", "")
 app = FastAPI(title="CifliX JSON Catalog API", version="1.0.0")
 origins = [x.strip() for x in os.getenv("CORS_ORIGINS", "*").split(",") if x.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=False,
-                   allow_methods=["GET", "POST", "OPTIONS"], allow_headers=["*"])
+                   allow_methods=["GET", "POST", "DELETE", "OPTIONS"], allow_headers=["*"])
 
 def read_catalog() -> list[dict[str, Any]]:
     if not DATA_FILE.exists():
