@@ -62,7 +62,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout top=row();top.setPadding(dp(20),dp(18),dp(20),dp(10));page.addView(top);
         TextView logo=label("Cifli",27,WHITE,true),x=label("X",27,GOLD,true);top.addView(logo);top.addView(x);
         View gap=new View(this);top.addView(gap,new LinearLayout.LayoutParams(0,1,1));
-        TextView profile=label("●",19,GOLD,true);profile.setGravity(Gravity.CENTER);top.addView(profile,new LinearLayout.LayoutParams(dp(42),dp(42)));
+        TextView profile=label("⚙",20,GOLD,true);profile.setGravity(Gravity.CENTER);top.addView(profile,new LinearLayout.LayoutParams(dp(42),dp(42)));profile.setOnClickListener(v->settings());
         EditText search=new EditText(this);search.setSingleLine(true);search.setTextColor(WHITE);search.setHintTextColor(MUTED);search.setHint("ابحث عن فيلم أو مسلسل");search.setTextSize(14);search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);search.setPadding(dp(16),0,dp(16),0);search.setBackground(bg(PANEL,13));LinearLayout.LayoutParams searchLp=new LinearLayout.LayoutParams(-1,dp(50));searchLp.setMargins(dp(18),dp(8),dp(18),dp(18));page.addView(search,searchLp);
         search.setOnEditorActionListener((v,a,e)->{if(a==EditorInfo.IME_ACTION_SEARCH){runSearch(search.getText().toString());return true;}return false;});
         buildHero();
