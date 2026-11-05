@@ -104,8 +104,16 @@ public class MainActivity extends AppCompatActivity {
     }
     private void onTab(int tab){currentTab=tab;if(tab==0)showHome();else if(tab==1)showCategory("الأفلام",movies);else if(tab==2)showCategory("المسلسلات",series);else showFavorites();}
     private void loadLibrary(){
-        if(apiBase.isEmpty()){if(status!=null)status.setText("المعاينة جاهزة • اربط الخادم لإظهار مكتبتك الفعلية");return;}
-        loadSection("latest-movies",movies);loadSection("latest-series",series);
+        if(tmdbKey.trim().isEmpty()){if(status!=null)status.setText("أضف مفتاح TMDB من الإعدادات حتى تظهر الأفلام والمسلسلات");return;}
+        loadTmdb("/trending/movie/week?language=ar",movies);
+        loadTmdb("/trending/tv/week?language=ar",series);
+    }
+    private void loadTmdb(String path,ArrayList<JSONObject> target){
+        Request req=new Request.Builder().url("https://api.themoviedb.org/3"+path+"&api_key="+Uri.encode(tmdbKey)).build();
+        http.newCall(req).enqueue(new Callback(){
+            public void onFailure(Call c,IOException e){runOnUiThread(()->{if(status!=null)status.setText("تعذر الاتصال بـ TMDB");});}
+            public void onResponse(Call c,Response r)throws IOException{try(Response res=r){if(!res.isSuccessful())throw new IOException("HTTP "+res.code());JSONArray a=new JSONObject(res.body().string()).optJSONArray("results");ArrayList<JSONObject> found=new ArrayList<>();if(a!=null)for(int i=0;i<a.length();i++){JSONObject s=a.optJSONObject(i);if(s==null)continue;boolean tv=s.has("name");JSONObject o=new JSONObject();o.put("id",s.optString("id"));o.put("title",s.optString(tv?"name":"title"));o.put("type",tv?"series":"movie");o.put("poster",s.optString("poster_path").isEmpty()?"":"https://image.tmdb.org/t/p/w500"+s.optString("poster_path"));o.put("overview",s.optString("overview"));o.put("year",s.optString(tv?"first_air_date":"release_date"));o.put("rating",s.optString("vote_average"));found.add(o);}target.clear();target.addAll(found);runOnUiThread(()->{for(PosterAdapter a2:adapters)a2.notifyDataSetChanged();if(status!=null)status.setText("تم تحميل "+(movies.size()+series.size())+" عنوان");});}catch(Exception e){runOnUiThread(()->{if(status!=null)status.setText("تعذر قراءة بيانات TMDB");});}}
+        });
     }
     private void request(String path,Callback callback){
         if(apiBase.isEmpty()){runOnUiThread(()->new AlertDialog.Builder(this).setTitle("اربط مكتبة CifliX").setMessage("أدخل رابط الخادم من الإعدادات حتى تظهر عناوين مكتبتك.").setPositiveButton("الإعدادات",(d,w)->settings()).setNegativeButton("لاحقاً",null).show());return;}
