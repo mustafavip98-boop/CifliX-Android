@@ -180,9 +180,22 @@ public class MainActivity extends AppCompatActivity {
     private void showFavorites(){ArrayList<JSONObject> list=new ArrayList<>();for(JSONObject o:movies)if(favorites.contains(o.optString("id")))list.add(o);for(JSONObject o:series)if(favorites.contains(o.optString("id")))list.add(o);showCategory("قائمتي",list);}
     private void showDetails(JSONObject item){
         String id=item.optString("id");if(id.isEmpty()){toast("معرّف المحتوى غير متوفر");return;}
-        request("/title/"+Uri.encode(id),new Callback(){
-            public void onFailure(Call c,IOException e){runOnUiThread(()->toast("تعذر تحميل التفاصيل"));}
-            public void onResponse(Call c,Response r)throws IOException{try{JSONObject details=new JSONObject(r.body().string());runOnUiThread(()->detailsScreen(details));}catch(Exception e){runOnUiThread(()->toast("بيانات التفاصيل غير صالحة"));}}
+        String media="series".equals(item.optString("type"))?"tv":"movie";
+        Request req=new Request.Builder().url("https://api.themoviedb.org/3/"+media+"/"+Uri.encode(id)+"?language=ar&api_key="+Uri.encode(tmdbKey)).build();
+        http.newCall(req).enqueue(new Callback(){
+            public void onFailure(Call call,IOException e){runOnUiThread(()->toast("تعذر تحميل التفاصيل"));}
+            public void onResponse(Call call,Response response)throws IOException{
+                try(Response r=response){
+                    if(!r.isSuccessful())throw new IOException("HTTP "+r.code());
+                    JSONObject src=new JSONObject(r.body().string());JSONObject d=new JSONObject();
+                    d.put("id",src.optString("id"));d.put("title",src.optString("title",src.optString("name")));
+                    d.put("type",media.equals("tv")?"مسلسل":"فيلم");
+                    d.put("poster",src.optString("poster_path").isEmpty()?"":"https://image.tmdb.org/t/p/w500"+src.optString("poster_path"));
+                    d.put("overview",src.optString("overview"));d.put("year",src.optString("release_date",src.optString("first_air_date")));
+                    d.put("rating",src.optString("vote_average"));
+                    runOnUiThread(()->detailsScreen(d));
+                }catch(Exception e){runOnUiThread(()->toast("تعذر قراءة التفاصيل"));}
+            }
         });
     }
     private void detailsScreen(JSONObject o){
