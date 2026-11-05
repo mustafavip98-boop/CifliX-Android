@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "movie-001",
+      "title": "اسم الفيلم",
+      "type": "movie",
+      "genre": "أكشن",
+      "year": 2026,
+      "rating": 8.5,
+      "poster": "https://example.com/poster.jpg",
+      "backdrop": "https://example.com/backdrop.jpg",
+      "overview": "نبذة عن الفيلم",
+      "featured": true,
+      "video": "https://example.com/movie.m3u8",
+      "streams": [
+        { "url": "https://example.com/movie-1080.m3u8", "quality": "1080p" },
+        { "url": "https://example.com/movie-720.m3u8", "quality": "720p" }
+      ],
+      "subtitles": [
+        { "url": "https://example.com/movie-ar.vtt", "label": "العربية" }
+      ]
+    },
+    {
+      "id": "series-001",
+      "title": "اسم المسلسل",
+      "type": "series",
+      "genre": "دراما",
+      "year": 2025,
+      "poster": "https://example.com/series.jpg",
+      "overview": "نبذة عن المسلسل",
+      "episodes": [
+        {
+          "id": "series-001-s01e01",
+          "season": 1,
+          "episode": 1,
+          "title": "الحلقة الأولى",
+          "video": "https://example.com/episode-01.m3u8"
+        }
+      ]
+    }
+  ]
+}
