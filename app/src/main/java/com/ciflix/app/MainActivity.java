@@ -153,10 +153,28 @@ public class MainActivity extends AppCompatActivity {
         public int getItemCount(){return data.size();}
     }
     private void runSearch(String query){
-        if(query.trim().isEmpty())return;lastSearch=query;searchResults.clear();
-        request("/search?q="+Uri.encode(query.trim())+"&page=1",new Callback(){
-            public void onFailure(Call c,IOException e){runOnUiThread(()->toast("تعذر تنفيذ البحث"));}
-            public void onResponse(Call c,Response r)throws IOException{try{JSONObject obj=new JSONObject(r.body().string());JSONArray a=obj.optJSONArray("items");if(a!=null)for(int i=0;i<a.length();i++)searchResults.add(a.getJSONObject(i));runOnUiThread(()->showCategory("نتائج: "+query,searchResults));}catch(Exception e){runOnUiThread(()->toast("تعذر قراءة نتائج البحث"));}}
+        if(query.trim().isEmpty())return;
+        if(tmdbKey.trim().isEmpty()){toast("أضف مفتاح TMDB من الإعدادات أولاً");settings();return;}
+        lastSearch=query;searchResults.clear();
+        Request req=new Request.Builder().url("https://api.themoviedb.org/3/search/multi?query="+Uri.encode(query.trim())+"&language=ar&api_key="+Uri.encode(tmdbKey)).build();
+        http.newCall(req).enqueue(new Callback(){
+            public void onFailure(Call call,IOException e){runOnUiThread(()->toast("تعذر تنفيذ البحث"));}
+            public void onResponse(Call call,Response response)throws IOException{
+                try(Response r=response){
+                    if(!r.isSuccessful())throw new IOException("HTTP "+r.code());
+                    JSONArray a=new JSONObject(r.body().string()).optJSONArray("results");
+                    if(a!=null)for(int i=0;i<a.length();i++){
+                        JSONObject src=a.optJSONObject(i);if(src==null)continue;
+                        String media=src.optString("media_type");if(!"movie".equals(media)&&!"tv".equals(media))continue;
+                        JSONObject o=new JSONObject();o.put("id",src.optString("id"));
+                        o.put("title",src.optString("title",src.optString("name")));o.put("type","tv".equals(media)?"series":"movie");
+                        o.put("poster",src.optString("poster_path").isEmpty()?"":"https://image.tmdb.org/t/p/w500"+src.optString("poster_path"));
+                        o.put("overview",src.optString("overview"));o.put("year",src.optString("release_date",src.optString("first_air_date")));
+                        o.put("rating",src.optString("vote_average"));searchResults.add(o);
+                    }
+                    runOnUiThread(()->showCategory("نتائج: "+query,searchResults));
+                }catch(Exception e){runOnUiThread(()->toast("تعذر البحث؛ تحقق من مفتاح TMDB"));}
+            }
         });
     }
     private void showFavorites(){ArrayList<JSONObject> list=new ArrayList<>();for(JSONObject o:movies)if(favorites.contains(o.optString("id")))list.add(o);for(JSONObject o:series)if(favorites.contains(o.optString("id")))list.add(o);showCategory("قائمتي",list);}
