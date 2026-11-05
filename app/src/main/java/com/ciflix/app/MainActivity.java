@@ -190,21 +190,21 @@ public class MainActivity extends AppCompatActivity {
         new AlertDialog.Builder(this).setTitle("إعدادات CifliX").setView(box).setNegativeButton("إلغاء",null).setNeutralButton("فحص المستودع",(d,w)->{String u=repoInput.getText().toString().trim();if(!u.isEmpty()){manifestUrl=u;getSharedPreferences("ciflix",MODE_PRIVATE).edit().putString("plugin_manifest",manifestUrl).apply();fetchPluginManifest();}}).setPositiveButton("حفظ",(d,w)->{apiBase=apiInput.getText().toString().trim().replaceAll("/$","");manifestUrl=repoInput.getText().toString().trim();getSharedPreferences("ciflix",MODE_PRIVATE).edit().putString("api_base",apiBase).putString("plugin_manifest",manifestUrl).apply();toast("تم حفظ الإعدادات");showHome();}).show();
     }
     private void fetchPluginManifest(){
-        toast("جارٍ فحص مستودع الإضافات...");
-        Request req=new Request.Builder().url(manifestUrl).header("Accept","application/json").build();
-        http.newCall(req).enqueue(new Callback(){
-            public void onFailure(Call call,IOException e){runOnUiThread(()->toast("تعذر تحميل manifest.json"));}
-            public void onResponse(Call call,Response response)throws IOException{
-                try{
-                    if(!response.isSuccessful())throw new IOException("HTTP "+response.code());
-                    JSONObject root=new JSONObject(response.body().string());JSONArray list=root.optJSONArray("scrapers");
-                    if(list==null)throw new Exception("Missing scrapers");
-                    StringBuilder details=new StringBuilder();int enabled=0;
-                    for(int i=0;i<list.length();i++){JSONObject p=list.optJSONObject(i);if(p==null||!p.optBoolean("enabled",true))continue;enabled++;details.append("• ").append(p.optString("name",p.optString("id"))).append("  v").append(p.optString("version","—")).append("\n").append(p.optString("description","")).append("\n\n");}
-                    final String result=details.toString();final int count=enabled;
-                    runOnUiThread(()->new AlertDialog.Builder(MainActivity.this).setTitle("تمت قراءة المستودع").setMessage("الإضافات المفعّلة: "+count+"\n\n"+result).setPositiveButton("حسناً",null).show());
-                }catch(Exception e){runOnUiThread(()->toast("ملف المستودع غير صالح أو تنسيقه غير مدعوم"));}
+        toast("جارٍ تحميل ملفات الإضافات...");
+        new PluginRepository(this).sync(manifestUrl,(plugins,error)->{
+            if(error!=null){toast(error);return;}
+            StringBuilder report=new StringBuilder();
+            int downloaded=0;
+            for(PluginRepository.Plugin plugin:plugins){
+                report.append("• ").append(plugin.name).append("  v").append(plugin.version)
+                    .append("\\n").append(plugin.state).append("\\n");
+                if("تم التنزيل".equals(plugin.state))downloaded++;
             }
+            report.insert(0,"تم تنزيل "+downloaded+" من "+plugins.size()+" إضافة مفعّلة\\n\\n");
+            new AlertDialog.Builder(MainActivity.this)
+                .setTitle("مستودع الإضافات")
+                .setMessage(report.length()==0?"لا توجد إضافات مفعّلة في هذا المستودع":report.toString())
+                .setPositiveButton("حسناً",null).show();
         });
     }
     private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
