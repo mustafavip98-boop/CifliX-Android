@@ -29,6 +29,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int BG=Color.rgb(9,12,18), PANEL=Color.rgb(20,25,34), GOLD=Color.rgb(225,177,87), MUTED=Color.rgb(155,164,178), WHITE=Color.WHITE;
     private final OkHttpClient http=new OkHttpClient.Builder().connectTimeout(15,TimeUnit.SECONDS).readTimeout(25,TimeUnit.SECONDS).build();
     private String apiBase="";
+    private String manifestUrl="https://raw.githubusercontent.com/mo7AmMeD64/nuvio-plugins/main/manifest.json";
     private FrameLayout frame;
     private LinearLayout page;
     private TextView status;
@@ -45,6 +46,7 @@ public class MainActivity extends AppCompatActivity {
         getWindow().setStatusBarColor(BG); getWindow().setNavigationBarColor(BG);
         getWindow().getDecorView().setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         apiBase=getSharedPreferences("ciflix",MODE_PRIVATE).getString("api_base","");
+        manifestUrl=getSharedPreferences("ciflix",MODE_PRIVATE).getString("plugin_manifest",manifestUrl);
         favorites.addAll(getSharedPreferences("ciflix",MODE_PRIVATE).getStringSet("favorites",new HashSet<>()));
         showHome();
     }
@@ -180,8 +182,30 @@ public class MainActivity extends AppCompatActivity {
     }
     private void releasePlayer(){if(player!=null){player.release();player=null;}playerView=null;}
     private void settings(){
-        EditText input=new EditText(this);input.setSingleLine(true);input.setHint("https://your-domain.com/api");input.setText(apiBase);input.setTextColor(WHITE);
-        new AlertDialog.Builder(this).setTitle("إعدادات CifliX").setMessage("رابط خادم المكتبة").setView(input).setNegativeButton("إلغاء",null).setPositiveButton("حفظ",(d,w)->{apiBase=input.getText().toString().trim().replaceAll("/$","");getSharedPreferences("ciflix",MODE_PRIVATE).edit().putString("api_base",apiBase).apply();showHome();}).show();
+        LinearLayout box=column();box.setPadding(dp(20),dp(8),dp(20),0);
+        TextView apiLabel=label("رابط API (اختياري)",12,MUTED,true);box.addView(apiLabel);
+        EditText apiInput=new EditText(this);apiInput.setSingleLine(true);apiInput.setHint("https://server.example/api");apiInput.setText(apiBase);apiInput.setTextColor(WHITE);box.addView(apiInput);
+        TextView repoLabel=label("رابط مستودع إضافات Nuvio",12,MUTED,true);LinearLayout.LayoutParams rl=new LinearLayout.LayoutParams(-1,-2);rl.topMargin=dp(12);box.addView(repoLabel,rl);
+        EditText repoInput=new EditText(this);repoInput.setSingleLine(true);repoInput.setText(manifestUrl);repoInput.setTextColor(WHITE);box.addView(repoInput);
+        new AlertDialog.Builder(this).setTitle("إعدادات CifliX").setView(box).setNegativeButton("إلغاء",null).setNeutralButton("فحص المستودع",(d,w)->{String u=repoInput.getText().toString().trim();if(!u.isEmpty()){manifestUrl=u;getSharedPreferences("ciflix",MODE_PRIVATE).edit().putString("plugin_manifest",manifestUrl).apply();fetchPluginManifest();}}).setPositiveButton("حفظ",(d,w)->{apiBase=apiInput.getText().toString().trim().replaceAll("/$","");manifestUrl=repoInput.getText().toString().trim();getSharedPreferences("ciflix",MODE_PRIVATE).edit().putString("api_base",apiBase).putString("plugin_manifest",manifestUrl).apply();toast("تم حفظ الإعدادات");showHome();}).show();
+    }
+    private void fetchPluginManifest(){
+        toast("جارٍ فحص مستودع الإضافات...");
+        Request req=new Request.Builder().url(manifestUrl).header("Accept","application/json").build();
+        http.newCall(req).enqueue(new Callback(){
+            public void onFailure(Call call,IOException e){runOnUiThread(()->toast("تعذر تحميل manifest.json"));}
+            public void onResponse(Call call,Response response)throws IOException{
+                try{
+                    if(!response.isSuccessful())throw new IOException("HTTP "+response.code());
+                    JSONObject root=new JSONObject(response.body().string());JSONArray list=root.optJSONArray("scrapers");
+                    if(list==null)throw new Exception("Missing scrapers");
+                    StringBuilder details=new StringBuilder();int enabled=0;
+                    for(int i=0;i<list.length();i++){JSONObject p=list.optJSONObject(i);if(p==null||!p.optBoolean("enabled",true))continue;enabled++;details.append("• ").append(p.optString("name",p.optString("id"))).append("  v").append(p.optString("version","—")).append("\n").append(p.optString("description","")).append("\n\n");}
+                    final String result=details.toString();final int count=enabled;
+                    runOnUiThread(()->new AlertDialog.Builder(MainActivity.this).setTitle("تمت قراءة المستودع").setMessage("الإضافات المفعّلة: "+count+"\n\n"+result).setPositiveButton("حسناً",null).show());
+                }catch(Exception e){runOnUiThread(()->toast("ملف المستودع غير صالح أو تنسيقه غير مدعوم"));}
+            }
+        });
     }
     private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
     @Override public void onBackPressed(){if(player!=null){releasePlayer();showHome();}else showHome();}
