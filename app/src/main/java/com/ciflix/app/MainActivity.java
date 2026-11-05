@@ -29,6 +29,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int BG=Color.rgb(9,12,18), PANEL=Color.rgb(20,25,34), GOLD=Color.rgb(225,177,87), MUTED=Color.rgb(155,164,178), WHITE=Color.WHITE;
     private final OkHttpClient http=new OkHttpClient.Builder().connectTimeout(15,TimeUnit.SECONDS).readTimeout(25,TimeUnit.SECONDS).build();
     private String apiBase="";
+    private String tmdbKey="";
     private String manifestUrl="https://raw.githubusercontent.com/mo7AmMeD64/nuvio-plugins/main/manifest.json";
     private FrameLayout frame;
     private LinearLayout page;
@@ -46,6 +47,7 @@ public class MainActivity extends AppCompatActivity {
         getWindow().setStatusBarColor(BG); getWindow().setNavigationBarColor(BG);
         getWindow().getDecorView().setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         apiBase=getSharedPreferences("ciflix",MODE_PRIVATE).getString("api_base","");
+        tmdbKey=getSharedPreferences("ciflix",MODE_PRIVATE).getString("tmdb_key","");
         manifestUrl=getSharedPreferences("ciflix",MODE_PRIVATE).getString("plugin_manifest",manifestUrl);
         favorites.addAll(getSharedPreferences("ciflix",MODE_PRIVATE).getStringSet("favorites",new HashSet<>()));
         showHome();
@@ -68,7 +70,7 @@ public class MainActivity extends AppCompatActivity {
         EditText search=new EditText(this);search.setSingleLine(true);search.setTextColor(WHITE);search.setHintTextColor(MUTED);search.setHint("ابحث عن فيلم أو مسلسل");search.setTextSize(14);search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);search.setPadding(dp(16),0,dp(16),0);search.setBackground(bg(PANEL,13));LinearLayout.LayoutParams searchLp=new LinearLayout.LayoutParams(-1,dp(50));searchLp.setMargins(dp(18),dp(8),dp(18),dp(18));page.addView(search,searchLp);
         search.setOnEditorActionListener((v,a,e)->{if(a==EditorInfo.IME_ACTION_SEARCH){runSearch(search.getText().toString());return true;}return false;});
         buildHero();
-        status=label(apiBase.isEmpty()?"أهلاً بك في عالم CifliX":"جارٍ تحميل مكتبتك...",12,MUTED,false);status.setPadding(dp(20),dp(8),dp(20),dp(8));page.addView(status);
+        status=label(tmdbKey.isEmpty()?"أضف مفتاح TMDB من الإعدادات لعرض الأفلام":"جارٍ تحميل مكتبة الأفلام...",12,MUTED,false);status.setPadding(dp(20),dp(8),dp(20),dp(8));page.addView(status);
         addShelf("اختيارات CifliX",movies);
         addShelf("أحدث الأفلام",movies);
         addShelf("مسلسلات تستحق المتابعة",series);
