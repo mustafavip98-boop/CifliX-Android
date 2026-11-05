@@ -1,109 +1,164 @@
+import json
 import os
-import asyncio
-from typing import Any
-from urllib.parse import quote
+import tempfile
 from pathlib import Path
+from typing import Any
 
-import httpx
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-UPSTREAM = "https://cinemana.shabakaty.cc"
-API = f"{UPSTREAM}/api/android"
-TIMEOUT = httpx.Timeout(20.0, connect=10.0)
-app = FastAPI(title="CifliX Cinemana Connector", version="0.1.0")
+APP_DIR = Path(__file__).resolve().parents[1]
+DATA_FILE = Path(os.getenv("CIFLIX_CATALOG_FILE", str(APP_DIR / "data" / "catalog.json")))
+ADMIN_TOKEN = os.getenv("CIFLIX_ADMIN_TOKEN", "")
+app = FastAPI(title="CifliX JSON Catalog API", version="1.0.0")
 origins = [x.strip() for x in os.getenv("CORS_ORIGINS", "*").split(",") if x.strip()]
-app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=False, allow_methods=["GET", "OPTIONS"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=False,
+                   allow_methods=["GET", "POST", "OPTIONS"], allow_headers=["*"])
 
-async def upstream_json(path: str) -> Any:
-    url = f"{API}/{path.lstrip('/')}"
-    headers = {"User-Agent": "CifliX/0.1 (web client)", "Referer": UPSTREAM + "/", "Accept": "application/json, text/plain, */*"}
+def read_catalog() -> list[dict[str, Any]]:
+    if not DATA_FILE.exists():
+        return []
     try:
-        async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
-            response = await client.get(url, headers=headers)
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"Upstream returned HTTP {exc.response.status_code}")
-    except (httpx.RequestError, ValueError) as exc:
-        raise HTTPException(status_code=502, detail=f"Could not read upstream JSON: {type(exc).__name__}")
+        payload = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+        rows = payload if isinstance(payload, list) else payload.get("items", [])
+        return rows if isinstance(rows, list) else []
+    except (OSError, json.JSONDecodeError):
+        raise HTTPException(status_code=500, detail="Catalog JSON file is invalid")
 
-def content_item(item: dict) -> dict | None:
-    item_id = item.get("nb")
-    if item_id is None: return None
-    try: kind = int(item.get("kind", 1))
-    except (ValueError, TypeError): kind = 1
-    return {"id": str(item_id), "title": item.get("en_title") or "بدون عنوان", "poster": item.get("imgObjUrl"), "type": "series" if kind == 2 else "movie"}
+def write_catalog(items: list[dict[str, Any]]) -> None:
+    DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix="catalog-", suffix=".json", dir=str(DATA_FILE.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump({"version": 1, "items": items}, handle, ensure_ascii=False, indent=2)
+        os.replace(temp_name, DATA_FILE)
+    finally:
+        if os.path.exists(temp_name):
+            os.unlink(temp_name)
+
+def normalize_item(raw: dict[str, Any], index: int = 0) -> dict[str, Any]:
+    title = str(raw.get("title") or raw.get("name") or "").strip()
+    if not title:
+        raise HTTPException(status_code=422, detail=f"Item {index + 1} has no title")
+    raw_type = str(raw.get("type") or "movie").lower()
+    kind = "series" if raw_type in ("series", "tv", "مسلسل", "2") else ("anime" if raw_type in ("anime", "أنمي") else "movie")
+    episodes = raw.get("episodes") or raw.get("seasons") or []
+    if not isinstance(episodes, list):
+        raise HTTPException(status_code=422, detail=f"Episodes for '{title}' must be an array")
+    return {
+        "id": str(raw.get("id") or raw.get("nb") or f"ciflix-{index+1}"),
+        "title": title,
+        "type": kind,
+        "genre": raw.get("genre") or (raw.get("genres", [""])[0] if isinstance(raw.get("genres"), list) and raw.get("genres") else ""),
+        "year": raw.get("year") or raw.get("release_year"),
+        "rating": raw.get("rating") or raw.get("stars"),
+        "poster": raw.get("poster") or raw.get("poster_url") or raw.get("image") or "",
+        "backdrop": raw.get("backdrop") or raw.get("cover") or "",
+        "overview": raw.get("overview") or raw.get("description") or raw.get("desc") or "",
+        "video": raw.get("video") or raw.get("url") or raw.get("stream") or "",
+        "streams": raw.get("streams") if isinstance(raw.get("streams"), list) else [],
+        "subtitles": raw.get("subtitles") if isinstance(raw.get("subtitles"), list) else [],
+        "episodes": episodes,
+        "featured": bool(raw.get("featured", False)),
+    }
+
+def admin_required(token: str | None) -> None:
+    if not ADMIN_TOKEN:
+        raise HTTPException(status_code=503, detail="Set CIFLIX_ADMIN_TOKEN on the server before using admin endpoints")
+    if token != ADMIN_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid admin token")
 
 @app.get("/api/health")
-async def health(): return {"ok": True, "service": "CifliX Cinemana Connector", "upstream": UPSTREAM}
+async def health():
+    return {"ok": True, "service": "CifliX JSON Catalog API", "catalog_items": len(read_catalog())}
 
 @app.get("/api/home")
-async def home(section: str = Query("latest-movies", pattern="^(latest-movies|latest-series|popular|popular-movies|popular-series)$"), page: int = Query(1, ge=1, le=500), limit: int = Query(24, ge=1, le=60)):
-    p = page - 1
-    if section == "latest-movies": path = f"latestMovies/level/0/itemsPerPage/{limit}/page/{p}"
-    elif section == "latest-series": path = f"latestSeries/level/0/itemsPerPage/{limit}/page/{p}"
+async def home(section: str = Query("latest-movies", pattern="^(latest-movies|latest-series|popular|popular-movies|popular-series|featured)$"),
+               page: int = Query(1, ge=1), limit: int = Query(24, ge=1, le=60)):
+    items = read_catalog()
+    if section in ("latest-movies", "popular-movies"):
+        items = [x for x in items if x.get("type") == "movie"]
+    elif section in ("latest-series", "popular-series"):
+        items = [x for x in items if x.get("type") in ("series", "anime")]
+    elif section == "featured":
+        items = [x for x in items if x.get("featured")]
+    if section.startswith("popular"):
+        items = sorted(items, key=lambda x: float(x.get("rating") or 0), reverse=True)
     else:
-        kind = {"popular": "", "popular-movies": "/videoKind/1", "popular-series": "/videoKind/2"}[section]
-        path = f"video/V/2/itemsPerPage/{limit}/level/0{kind}/sortParam/desc/pageNumber/{p}"
-    data = await upstream_json(path)
-    if not isinstance(data, list): raise HTTPException(status_code=502, detail="Unexpected upstream catalogue format")
-    return {"items": [x for x in (content_item(i) for i in data if isinstance(i, dict)) if x], "page": page, "section": section}
+        items = list(reversed(items))
+    start = (page - 1) * limit
+    return {"items": items[start:start + limit], "page": page, "total": len(items), "section": section}
 
 @app.get("/api/search")
-async def search(q: str = Query(..., min_length=1, max_length=120), page: int = Query(1, ge=1, le=3)):
-    from datetime import datetime
-    year = f"1900,{datetime.now().year}"
-    safe_q = quote(q.strip(), safe="")
-    p = page - 1
-    async def one(kind: str):
-        path = f"AdvancedSearch?level=0&page={p}&year={year}&type={kind}&videoTitle={safe_q}"
-        data = await upstream_json(path)
-        if not isinstance(data, list): return []
-        return [x for x in (content_item(i) for i in data if isinstance(i, dict)) if x]
-    movies, series = await asyncio.gather(one("movies"), one("series"))
-    return {"items": movies + series, "page": page, "query": q}
+async def search(q: str = Query(..., min_length=1, max_length=120), page: int = Query(1, ge=1)):
+    term = q.strip().casefold()
+    found = [x for x in read_catalog() if term in str(x.get("title", "")).casefold()
+             or term in str(x.get("overview", "")).casefold()
+             or term in str(x.get("genre", "")).casefold()]
+    start = (page - 1) * 30
+    return {"items": found[start:start + 30], "page": page, "total": len(found), "query": q}
 
 @app.get("/api/title/{item_id}")
 async def title_detail(item_id: str):
-    if not item_id or len(item_id) > 100 or "/" in item_id: raise HTTPException(status_code=400, detail="Invalid title id")
-    info, seasons = await asyncio.gather(upstream_json(f"allVideoInfo/id/{quote(item_id, safe='')}"), upstream_json(f"videoSeason/id/{quote(item_id, safe='')}"))
-    if not isinstance(info, dict): raise HTTPException(status_code=502, detail="Unexpected title details format")
-    try: year = int(info.get("year")) if info.get("year") is not None else None
-    except (TypeError, ValueError): year = None
-    try: rating = float(info.get("stars")) if info.get("stars") is not None else None
-    except (TypeError, ValueError): rating = None
-    categories = info.get("categories") or []
-    genres = [x.get("en_title") for x in categories if isinstance(x, dict) and x.get("en_title")]
-    lang_obj = info.get("videoLanguages") or {}
-    if isinstance(lang_obj, dict) and lang_obj.get("en_title"): genres.append(lang_obj["en_title"])
-    actors = [x.get("name") for x in (info.get("actorsInfo") or []) if isinstance(x, dict) and x.get("name")]
-    episodes = []
-    if isinstance(seasons, list):
-        for ep in seasons:
-            if not isinstance(ep, dict) or ep.get("nb") is None: continue
-            try: season_no, episode_no = int(ep.get("season") or 1), int(ep.get("episodeNummer") or 1)
-            except (TypeError, ValueError): season_no, episode_no = 1, 1
-            episodes.append({"id": str(ep["nb"]), "season": season_no, "episode": episode_no, "title": f"الموسم {season_no} - الحلقة {episode_no}"})
-    episodes.sort(key=lambda x: (x["season"], x["episode"]), reverse=True)
-    return {"id": item_id, "title": info.get("en_title") or "بدون عنوان", "poster": info.get("imgObjUrl"), "year": year, "rating": rating, "likes": info.get("Likes"), "dislikes": info.get("DisLikes"), "overview": info.get("en_content"), "genres": genres, "actors": actors, "episodes": episodes, "type": "series" if episodes else "movie"}
+    item = next((x for x in read_catalog() if str(x.get("id")) == item_id), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="Title not found")
+    return item
 
 @app.get("/api/title/{item_id}/streams")
 async def title_streams(item_id: str, episode_id: str | None = None):
-    target = episode_id or item_id
-    if not target or len(target) > 100 or "/" in target: raise HTTPException(status_code=400, detail="Invalid stream id")
-    videos, subtitles = await asyncio.gather(upstream_json(f"transcoddedFiles/id/{quote(target, safe='')}"), upstream_json(f"translationFiles/id/{quote(target, safe='')}"), return_exceptions=True)
-    if isinstance(videos, Exception) or not isinstance(videos, list): raise HTTPException(status_code=502, detail="Stream list unavailable from upstream")
-    subtitle_items = []
-    if isinstance(subtitles, dict) and isinstance(subtitles.get("translations"), list):
-        for sub in subtitles["translations"]:
-            if isinstance(sub, dict) and sub.get("file"): subtitle_items.append({"url": sub["file"], "label": " - ".join(str(x) for x in [sub.get("name"), sub.get("extention")] if x)})
-    stream_items = []
-    for video in videos:
-        if isinstance(video, dict) and video.get("videoUrl"):
-            stream_items.append({"url": video["videoUrl"], "quality": video.get("resolution") or "Default", "type": "hls" if ".m3u8" in str(video["videoUrl"]).lower() else "auto"})
-    return {"streams": stream_items, "subtitles": subtitle_items}
+    item = next((x for x in read_catalog() if str(x.get("id")) == item_id), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="Title not found")
+    streams = item.get("streams") or ([{"url": item.get("video"), "quality": "Auto"}] if item.get("video") else [])
+    if episode_id:
+        episode = next((ep for ep in item.get("episodes", []) if str(ep.get("id")) == episode_id), None)
+        if not episode:
+            raise HTTPException(status_code=404, detail="Episode not found")
+        streams = episode.get("streams") or ([{"url": episode.get("video") or episode.get("url"), "quality": "Auto"}] if episode.get("video") or episode.get("url") else [])
+        subtitles = episode.get("subtitles", item.get("subtitles", []))
+    else:
+        subtitles = item.get("subtitles", [])
+    valid = [s for s in streams if isinstance(s, dict) and str(s.get("url", "")).startswith(("https://", "http://"))]
+    return {"streams": valid, "subtitles": subtitles}
 
-FRONTEND_DIR = Path(__file__).resolve().parents[1]
-app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+@app.post("/api/admin/catalog/import")
+async def import_catalog(payload: dict[str, Any], x_ciflix_admin_token: str | None = Header(default=None)):
+    admin_required(x_ciflix_admin_token)
+    rows = payload if isinstance(payload, list) else payload.get("items")
+    if not isinstance(rows, list):
+        raise HTTPException(status_code=422, detail="JSON must be an array or an object containing 'items'")
+    normalized = [normalize_item(x, i) for i, x in enumerate(rows) if isinstance(x, dict)]
+    if len(normalized) != len(rows):
+        raise HTTPException(status_code=422, detail="Every item must be a JSON object")
+    existing = {str(x.get("id")): x for x in read_catalog()}
+    for item in normalized:
+        existing[item["id"]] = item
+    merged = list(existing.values())
+    write_catalog(merged)
+    return {"ok": True, "imported": len(normalized), "total": len(merged)}
+
+@app.post("/api/admin/catalog")
+async def add_or_update_title(item: dict[str, Any], x_ciflix_admin_token: str | None = Header(default=None)):
+    admin_required(x_ciflix_admin_token)
+    normalized = normalize_item(item)
+    items = read_catalog()
+    items = [x for x in items if str(x.get("id")) != normalized["id"]]
+    items.append(normalized)
+    write_catalog(items)
+    return {"ok": True, "item": normalized}
+
+@app.delete("/api/admin/catalog/{item_id}")
+async def delete_title(item_id: str, x_ciflix_admin_token: str | None = Header(default=None)):
+    admin_required(x_ciflix_admin_token)
+    items = read_catalog()
+    remaining = [x for x in items if str(x.get("id")) != item_id]
+    if len(remaining) == len(items):
+        raise HTTPException(status_code=404, detail="Title not found")
+    write_catalog(remaining)
+    return {"ok": True, "total": len(remaining)}
+
+# Keep static site serving available when the frontend is deployed beside this API.
+if (APP_DIR / "index.html").exists():
+    app.mount("/", StaticFiles(directory=str(APP_DIR), html=True), name="frontend")
