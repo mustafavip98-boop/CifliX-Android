@@ -193,11 +193,14 @@ public class MainActivity extends AppCompatActivity {
     private void releasePlayer(){if(player!=null){player.release();player=null;}playerView=null;}
     private void settings(){
         LinearLayout box=column();box.setPadding(dp(20),dp(8),dp(20),0);
-        TextView apiLabel=label("رابط API (اختياري)",12,MUTED,true);box.addView(apiLabel);
+        TextView tmdbLabel=label("مفتاح TMDB API لعرض الأفلام (مطلوب)",12,MUTED,true);box.addView(tmdbLabel);
+        EditText tmdbInput=new EditText(this);tmdbInput.setSingleLine(true);tmdbInput.setHint("TMDB API Key");tmdbInput.setText(tmdbKey);tmdbInput.setTextColor(WHITE);box.addView(tmdbInput);
+        TextView tmdbHelp=label("المفتاح من themoviedb.org/settings/api",10,GOLD,false);box.addView(tmdbHelp);
+        TextView apiLabel=label("رابط API قديم (غير مطلوب)",12,MUTED,true);box.addView(apiLabel);
         EditText apiInput=new EditText(this);apiInput.setSingleLine(true);apiInput.setHint("https://server.example/api");apiInput.setText(apiBase);apiInput.setTextColor(WHITE);box.addView(apiInput);
         TextView repoLabel=label("رابط مستودع إضافات Nuvio",12,MUTED,true);LinearLayout.LayoutParams rl=new LinearLayout.LayoutParams(-1,-2);rl.topMargin=dp(12);box.addView(repoLabel,rl);
         EditText repoInput=new EditText(this);repoInput.setSingleLine(true);repoInput.setText(manifestUrl);repoInput.setTextColor(WHITE);box.addView(repoInput);
-        new AlertDialog.Builder(this).setTitle("إعدادات CifliX").setView(box).setNegativeButton("إلغاء",null).setNeutralButton("فحص المستودع",(d,w)->{String u=repoInput.getText().toString().trim();if(!u.isEmpty()){manifestUrl=u;getSharedPreferences("ciflix",MODE_PRIVATE).edit().putString("plugin_manifest",manifestUrl).apply();fetchPluginManifest();}}).setPositiveButton("حفظ",(d,w)->{apiBase=apiInput.getText().toString().trim().replaceAll("/$","");manifestUrl=repoInput.getText().toString().trim();getSharedPreferences("ciflix",MODE_PRIVATE).edit().putString("api_base",apiBase).putString("plugin_manifest",manifestUrl).apply();toast("تم حفظ الإعدادات");showHome();}).show();
+        new AlertDialog.Builder(this).setTitle("إعدادات CifliX").setView(box).setNegativeButton("إلغاء",null).setNeutralButton("فحص المستودع",(d,w)->{String u=repoInput.getText().toString().trim();if(!u.isEmpty()){manifestUrl=u;getSharedPreferences("ciflix",MODE_PRIVATE).edit().putString("plugin_manifest",manifestUrl).apply();fetchPluginManifest();}}).setPositiveButton("حفظ",(d,w)->{apiBase=apiInput.getText().toString().trim().replaceAll("/$","");tmdbKey=tmdbInput.getText().toString().trim();manifestUrl=repoInput.getText().toString().trim();getSharedPreferences("ciflix",MODE_PRIVATE).edit().putString("api_base",apiBase).putString("tmdb_key",tmdbKey).putString("plugin_manifest",manifestUrl).apply();toast("تم حفظ الإعدادات");showHome();}).show();
     }
     private void fetchPluginManifest(){
         toast("جارٍ تحميل ملفات الإضافات...");
