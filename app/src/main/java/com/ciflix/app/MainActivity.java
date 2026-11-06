@@ -13,7 +13,6 @@ import android.widget.*;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.*;
 import com.google.android.material.card.MaterialCardView;
-import com.whl.quickjs.android.QuickJSLoader;
 import com.bumptech.glide.Glide;
 import okhttp3.*;
 import org.json.*;
@@ -49,7 +48,6 @@ public class MainActivity extends AppCompatActivity {
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
-        QuickJSLoader.init();
         getWindow().setStatusBarColor(BG); getWindow().setNavigationBarColor(BG);
         getWindow().getDecorView().setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         tmdbKey=getSharedPreferences("ciflix",MODE_PRIVATE).getString("tmdb_key","");
