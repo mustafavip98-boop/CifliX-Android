@@ -20,6 +20,8 @@ import org.json.*;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.PlayerView;
 import java.io.IOException;
 import java.util.*;
@@ -29,7 +31,8 @@ import java.util.concurrent.TimeUnit;
 public class MainActivity extends AppCompatActivity {
     private static final int BG=Color.rgb(9,12,18), PANEL=Color.rgb(20,25,34), GOLD=Color.rgb(225,177,87), MUTED=Color.rgb(155,164,178), WHITE=Color.WHITE;
     private final OkHttpClient http=new OkHttpClient.Builder().connectTimeout(15,TimeUnit.SECONDS).readTimeout(25,TimeUnit.SECONDS).build();
-    private String apiBase="";
+    private boolean pluginSyncing=false;
+    private PluginRuntime pluginRuntime;
     private String tmdbKey="";
     private String manifestUrl="https://raw.githubusercontent.com/mo7AmMeD64/nuvio-plugins/main/manifest.json";
     private FrameLayout frame;
@@ -48,11 +51,11 @@ public class MainActivity extends AppCompatActivity {
         QuickJSLoader.init();
         getWindow().setStatusBarColor(BG); getWindow().setNavigationBarColor(BG);
         getWindow().getDecorView().setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
-        apiBase=getSharedPreferences("ciflix",MODE_PRIVATE).getString("api_base","");
         tmdbKey=getSharedPreferences("ciflix",MODE_PRIVATE).getString("tmdb_key","");
         manifestUrl=getSharedPreferences("ciflix",MODE_PRIVATE).getString("plugin_manifest",manifestUrl);
         favorites.addAll(getSharedPreferences("ciflix",MODE_PRIVATE).getStringSet("favorites",new HashSet<>()));
         showHome();
+        ensurePlugins();
     }
     private int dp(float v){return (int)(v*getResources().getDisplayMetrics().density+.5f);}
     private GradientDrawable bg(int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
@@ -119,16 +122,6 @@ public class MainActivity extends AppCompatActivity {
             public void onResponse(Call c,Response r)throws IOException{try(Response res=r){if(!res.isSuccessful())throw new IOException("HTTP "+res.code());JSONArray a=new JSONObject(res.body().string()).optJSONArray("results");ArrayList<JSONObject> found=new ArrayList<>();if(a!=null)for(int i=0;i<a.length();i++){JSONObject s=a.optJSONObject(i);if(s==null)continue;boolean tv=s.has("name");JSONObject o=new JSONObject();o.put("id",s.optString("id"));o.put("title",s.optString(tv?"name":"title"));o.put("type",tv?"series":"movie");o.put("poster",s.optString("poster_path").isEmpty()?"":"https://image.tmdb.org/t/p/w500"+s.optString("poster_path"));o.put("overview",s.optString("overview"));o.put("year",s.optString(tv?"first_air_date":"release_date"));o.put("rating",s.optString("vote_average"));found.add(o);}target.clear();target.addAll(found);runOnUiThread(()->{for(PosterAdapter a2:adapters)a2.notifyDataSetChanged();if(status!=null)status.setText("تم تحميل "+(movies.size()+series.size())+" عنوان");});}catch(Exception e){runOnUiThread(()->{if(status!=null)status.setText("تعذر قراءة بيانات TMDB");});}}
         });
     }
-    private void request(String path,Callback callback){
-        if(apiBase.isEmpty()){runOnUiThread(()->new AlertDialog.Builder(this).setTitle("اربط مكتبة CifliX").setMessage("أدخل رابط الخادم من الإعدادات حتى تظهر عناوين مكتبتك.").setPositiveButton("الإعدادات",(d,w)->settings()).setNegativeButton("لاحقاً",null).show());return;}
-        Request request=new Request.Builder().url(apiBase.replaceAll("/$","")+path).header("Accept","application/json").build();http.newCall(request).enqueue(callback);
-    }
-    private void loadSection(String key,ArrayList<JSONObject> target){
-        request("/home?section="+key+"&page=1&limit=30",new Callback(){
-            public void onFailure(Call c,IOException e){runOnUiThread(()->{if(status!=null)status.setText("تعذر الاتصال بالخادم حالياً");});}
-            public void onResponse(Call c,Response r)throws IOException{try{if(!r.isSuccessful())throw new IOException("HTTP "+r.code());JSONObject data=new JSONObject(r.body().string());JSONArray arr=data.optJSONArray("items");target.clear();if(arr!=null)for(int i=0;i<arr.length();i++)target.add(arr.getJSONObject(i));runOnUiThread(()->{for(PosterAdapter a:adapters)a.notifyDataSetChanged();if(status!=null)status.setText("مكتبتك جاهزة • "+(movies.size()+series.size())+" عنوان");});}catch(Exception ex){runOnUiThread(()->{if(status!=null)status.setText("تعذر قراءة بيانات المكتبة");});}}
-        });
-    }
     private class PosterAdapter extends RecyclerView.Adapter<PosterAdapter.Holder>{
         final ArrayList<JSONObject> data;PosterAdapter(ArrayList<JSONObject> d){data=d;}
         class Holder extends RecyclerView.ViewHolder{ImageView image;TextView title,meta;Holder(View v){super(v);image=v.findViewById(101);title=v.findViewById(102);meta=v.findViewById(103);}}
@@ -191,7 +184,7 @@ public class MainActivity extends AppCompatActivity {
                     if(!r.isSuccessful())throw new IOException("HTTP "+r.code());
                     JSONObject src=new JSONObject(r.body().string());JSONObject d=new JSONObject();
                     d.put("id",src.optString("id"));d.put("title",src.optString("title",src.optString("name")));
-                    d.put("type",media.equals("tv")?"مسلسل":"فيلم");
+                    d.put("type",media);
                     d.put("poster",src.optString("poster_path").isEmpty()?"":"https://image.tmdb.org/t/p/w500"+src.optString("poster_path"));
                     d.put("overview",src.optString("overview"));d.put("year",src.optString("release_date",src.optString("first_air_date")));
                     d.put("rating",src.optString("vote_average"));
@@ -204,23 +197,32 @@ public class MainActivity extends AppCompatActivity {
         basePage();TextView back=label("‹   رجوع",14,GOLD,true);back.setPadding(dp(20),dp(18),dp(20),dp(14));page.addView(back);back.setOnClickListener(v->showHome());
         ImageView poster=new ImageView(this);poster.setScaleType(ImageView.ScaleType.CENTER_CROP);Glide.with(this).load(o.optString("poster")).into(poster);LinearLayout.LayoutParams pp=new LinearLayout.LayoutParams(dp(170),dp(240));pp.gravity=Gravity.CENTER_HORIZONTAL;page.addView(poster,pp);
         TextView title=label(o.optString("title"),24,WHITE,true);title.setGravity(Gravity.CENTER);title.setPadding(dp(20),dp(16),dp(20),dp(5));page.addView(title);
-        TextView meta=label(o.optString("year","")+"   •   ★ "+o.optString("rating","—")+"   •   "+o.optString("type"),12,GOLD,true);meta.setGravity(Gravity.CENTER);page.addView(meta);
+        TextView meta=label(o.optString("year","")+"   •   ★ "+o.optString("rating","—")+"   •   "+("tv".equals(o.optString("type"))?"مسلسل":"فيلم"),12,GOLD,true);meta.setGravity(Gravity.CENTER);page.addView(meta);
         TextView desc=label(o.optString("overview","لا يوجد وصف متاح حالياً."),13,MUTED,false);desc.setGravity(Gravity.TOP|Gravity.RIGHT);desc.setPadding(dp(22),dp(18),dp(22),dp(18));page.addView(desc);
         LinearLayout actions=row();actions.setPadding(dp(20),dp(8),dp(20),dp(18));TextView play=actionButton("▶   تشغيل",GOLD,BG);actions.addView(play,new LinearLayout.LayoutParams(0,dp(48),1));TextView fav=actionButton(favorites.contains(o.optString("id"))?"♥":"♡   قائمتي",PANEL,WHITE);LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(0,dp(48),1);fp.setMargins(dp(10),0,0,0);actions.addView(fav,fp);page.addView(actions);
-        play.setOnClickListener(v->loadStreams(o.optString("id"),null));fav.setOnClickListener(v->{String id=o.optString("id");if(!favorites.add(id))favorites.remove(id);getSharedPreferences("ciflix",MODE_PRIVATE).edit().putStringSet("favorites",new HashSet<>(favorites)).apply();fav.setText(favorites.contains(id)?"♥   محفوظ":"♡   قائمتي");});
+        play.setOnClickListener(v->loadStreams(o.optString("id"),o.optString("type","movie"),1,1));fav.setOnClickListener(v->{String id=o.optString("id");if(!favorites.add(id))favorites.remove(id);getSharedPreferences("ciflix",MODE_PRIVATE).edit().putStringSet("favorites",new HashSet<>(favorites)).apply();fav.setText(favorites.contains(id)?"♥   محفوظ":"♡   قائمتي");});
         JSONArray eps=o.optJSONArray("episodes");if(eps!=null&&eps.length()>0){TextView sh=label("الحلقات",18,WHITE,true);sh.setPadding(dp(20),dp(12),dp(20),dp(10));page.addView(sh);for(int i=0;i<eps.length();i++){JSONObject ep=eps.optJSONObject(i);if(ep==null)continue;TextView e=label("الحلقة "+ep.optInt("episode")+"     الموسم "+ep.optInt("season"),13,WHITE,false);e.setPadding(dp(20),dp(13),dp(20),dp(13));page.addView(e);e.setOnClickListener(v->loadStreams(o.optString("id"),ep.optString("id")));}}
         addBottomNav();
     }
     private TextView actionButton(String s,int color,int fg){TextView t=label(s,13,fg,true);t.setGravity(Gravity.CENTER);t.setBackground(bg(color,10));return t;}
-    private void loadStreams(String id,String episode){
-        String path="/title/"+Uri.encode(id)+"/streams"+(episode==null?"":"?episode_id="+Uri.encode(episode));
-        request(path,new Callback(){public void onFailure(Call c,IOException e){runOnUiThread(()->toast("تعذر جلب مصادر التشغيل"));}public void onResponse(Call c,Response r)throws IOException{try{JSONObject obj=new JSONObject(r.body().string());JSONArray arr=obj.optJSONArray("streams");if(arr==null||arr.length()==0)throw new Exception("no streams");JSONObject stream=arr.getJSONObject(0);runOnUiThread(()->playVideo(stream.optString("url")));}catch(Exception e){runOnUiThread(()->toast("لا يوجد رابط تشغيل متاح"));}}});
+    private void loadStreams(String id,String mediaType,int season,int episode){
+        if(tmdbKey.trim().isEmpty()){toast("مفتاح TMDB مطلوب");return;}
+        toast("جارٍ البحث عن روابط التشغيل من الإضافات...");
+        pluginRuntime=new PluginRuntime(this);
+        pluginRuntime.findStreams(id,mediaType,season,episode,(streams,report)->runOnUiThread(()->{
+            if(streams.length()==0){new AlertDialog.Builder(this).setTitle("لم يتم العثور على روابط").setMessage(report.isEmpty()?"تأكد من اتصال الإنترنت وتحديث الإضافات.":report).setPositiveButton("حسناً",null).show();return;}
+            String[] labels=new String[streams.length()];
+            for(int i=0;i<streams.length();i++){JSONObject s=streams.optJSONObject(i);labels[i]=s.optString("provider","مصدر")+"  •  "+s.optString("quality","Auto")+"  •  "+s.optString("name","تشغيل");}
+            new AlertDialog.Builder(this).setTitle("اختر مصدر التشغيل").setItems(labels,(d,which)->{JSONObject s=streams.optJSONObject(which);playVideo(s.optString("url"),s.optJSONObject("headers"));}).setNegativeButton("إلغاء",null).show();
+        }));
     }
-    private void playVideo(String url){
+    private void playVideo(String url,JSONObject headers){
         if(url==null||!(url.startsWith("https://")||url.startsWith("http://"))){toast("رابط الفيديو غير صالح");return;}
         basePage();TextView back=label("‹   إغلاق المشغل",14,GOLD,true);back.setPadding(dp(18),dp(16),dp(18),dp(16));page.addView(back);back.setOnClickListener(v->{releasePlayer();showHome();});
         playerView=new PlayerView(this);playerView.setUseController(true);page.addView(playerView,new LinearLayout.LayoutParams(-1,dp(240)));
-        player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);player.setMediaItem(MediaItem.fromUri(Uri.parse(url)));player.prepare();player.play();
+        DefaultHttpDataSource.Factory dataFactory=new DefaultHttpDataSource.Factory();
+        if(headers!=null){HashMap<String,String> requestHeaders=new HashMap<>();Iterator<String> it=headers.keys();while(it.hasNext()){String key=it.next();requestHeaders.put(key,headers.optString(key));}dataFactory.setDefaultRequestProperties(requestHeaders);}
+        player=new ExoPlayer.Builder(this).setMediaSourceFactory(new DefaultMediaSourceFactory(dataFactory)).build();playerView.setPlayer(player);player.setMediaItem(MediaItem.fromUri(Uri.parse(url)));player.prepare();player.play();
         TextView note=label("CifliX Player",13,MUTED,true);note.setGravity(Gravity.CENTER);note.setPadding(0,dp(20),0,0);page.addView(note);
     }
     private void releasePlayer(){if(player!=null){player.release();player=null;}playerView=null;}
@@ -229,11 +231,22 @@ public class MainActivity extends AppCompatActivity {
         TextView tmdbLabel=label("مفتاح TMDB API لعرض الأفلام (مطلوب)",12,MUTED,true);box.addView(tmdbLabel);
         EditText tmdbInput=new EditText(this);tmdbInput.setSingleLine(true);tmdbInput.setHint("TMDB API Key");tmdbInput.setText(tmdbKey);tmdbInput.setTextColor(WHITE);box.addView(tmdbInput);
         TextView tmdbHelp=label("المفتاح من themoviedb.org/settings/api",10,GOLD,false);box.addView(tmdbHelp);
-        TextView apiLabel=label("رابط API قديم (غير مطلوب)",12,MUTED,true);box.addView(apiLabel);
-        EditText apiInput=new EditText(this);apiInput.setSingleLine(true);apiInput.setHint("https://server.example/api");apiInput.setText(apiBase);apiInput.setTextColor(WHITE);box.addView(apiInput);
         TextView repoLabel=label("رابط مستودع إضافات Nuvio",12,MUTED,true);LinearLayout.LayoutParams rl=new LinearLayout.LayoutParams(-1,-2);rl.topMargin=dp(12);box.addView(repoLabel,rl);
         EditText repoInput=new EditText(this);repoInput.setSingleLine(true);repoInput.setText(manifestUrl);repoInput.setTextColor(WHITE);box.addView(repoInput);
-        new AlertDialog.Builder(this).setTitle("إعدادات CifliX").setView(box).setNegativeButton("إلغاء",null).setNeutralButton("فحص المستودع",(d,w)->{String u=repoInput.getText().toString().trim();if(!u.isEmpty()){manifestUrl=u;getSharedPreferences("ciflix",MODE_PRIVATE).edit().putString("plugin_manifest",manifestUrl).apply();fetchPluginManifest();}}).setPositiveButton("حفظ",(d,w)->{apiBase=apiInput.getText().toString().trim().replaceAll("/$","");tmdbKey=tmdbInput.getText().toString().trim();manifestUrl=repoInput.getText().toString().trim();getSharedPreferences("ciflix",MODE_PRIVATE).edit().putString("api_base",apiBase).putString("tmdb_key",tmdbKey).putString("plugin_manifest",manifestUrl).apply();toast("تم حفظ الإعدادات");showHome();}).show();
+        new AlertDialog.Builder(this).setTitle("إعدادات CifliX").setView(box).setNegativeButton("إلغاء",null).setNeutralButton("فحص المستودع",(d,w)->{String u=repoInput.getText().toString().trim();if(!u.isEmpty()){manifestUrl=u;getSharedPreferences("ciflix",MODE_PRIVATE).edit().putString("plugin_manifest",manifestUrl).apply();fetchPluginManifest();}}).setPositiveButton("حفظ",(d,w)->{tmdbKey=tmdbInput.getText().toString().trim();manifestUrl=repoInput.getText().toString().trim();getSharedPreferences("ciflix",MODE_PRIVATE).edit().putString("tmdb_key",tmdbKey).putString("plugin_manifest",manifestUrl).apply();toast("تم حفظ الإعدادات");showHome();ensurePlugins();}).show();
+    }
+    private void ensurePlugins(){
+        File dir=new File(getFilesDir(),"plugins");
+        File[] files=dir.listFiles((d,n)->n.endsWith(".js"));
+        if(files!=null && files.length>0)return;
+        if(pluginSyncing)return;
+        pluginSyncing=true;
+        new PluginRepository(this).sync(manifestUrl,(plugins,error)->{
+            pluginSyncing=false;
+            if(error!=null){toast("تعذر تجهيز إضافات التشغيل: "+error);return;}
+            int ok=0;for(PluginRepository.Plugin p:plugins)if("تم التنزيل".equals(p.state))ok++;
+            toast("تم تجهيز "+ok+" من "+plugins.size()+" إضافة للتشغيل");
+        });
     }
     private void fetchPluginManifest(){
         toast("جارٍ تحميل ملفات الإضافات...");
@@ -255,5 +268,5 @@ public class MainActivity extends AppCompatActivity {
     }
     private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
     @Override public void onBackPressed(){if(player!=null){releasePlayer();showHome();}else showHome();}
-    @Override protected void onDestroy(){releasePlayer();super.onDestroy();}
+    @Override protected void onDestroy(){releasePlayer();pluginRuntime=null;super.onDestroy();}
 }
