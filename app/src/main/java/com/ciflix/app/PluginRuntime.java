@@ -152,7 +152,7 @@ public final class PluginRuntime {
                 if ("GET".equals(method) || "HEAD".equals(method)) b.method(method, null);
                 else b.method(method, body == null ? RequestBody.create(new byte[0], null) : body);
                 http.newCall(b.build()).enqueue(new Callback() {
-                    @Override public void onFailure(Call call, IOException e) { deliverFetch(id, new JSONObject().put("error", e.getMessage())); }
+                    @Override public void onFailure(Call call, IOException e) { deliverFetch(id, errorData(e.getMessage())); }
                     @Override public void onResponse(Call call, Response response) throws IOException {
                         try (Response r=response) {
                             byte[] bytes = r.body() == null ? new byte[0] : r.body().bytes();
@@ -168,6 +168,7 @@ public final class PluginRuntime {
                 });
             } catch (Exception e) { deliverFetch(id, new JSONObject().put("error", e.getMessage())); }
         }
+        private JSONObject errorData(String message) { JSONObject o = new JSONObject(); try { o.put("error", message); } catch (Exception ignored) {} return o; }
         private void deliverFetch(String id, JSONObject data) {
             String script = "window.__fetchDone(" + JSONObject.quote(id) + "," + JSONObject.quote(data.toString()) + ")";
             main.post(() -> { if (!finished) web.evaluateJavascript(script, null); });
