@@ -13,7 +13,9 @@ import okhttp3.*;
 import org.json.*;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -73,8 +75,9 @@ public final class PluginRuntime {
         if (index >= plugins.size()) { finish(); return; }
         File file = plugins.get(index++);
         try {
-            byte[] bytes = java.nio.file.Files.readAllBytes(file.toPath());
-            String source = new String(bytes, StandardCharsets.UTF_8);
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            try (FileInputStream input = new FileInputStream(file)) { byte[] chunk = new byte[8192]; int count; while ((count=input.read(chunk))!=-1) buffer.write(chunk,0,count); }
+            String source = new String(buffer.toByteArray(), StandardCharsets.UTF_8);
             JSONObject payload = new JSONObject();
             payload.put("name", file.getName());
             payload.put("source", source);
