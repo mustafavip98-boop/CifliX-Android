@@ -166,10 +166,10 @@ public final class PluginRuntime {
                             for (String key : r.headers().names()) hs.put(key, r.header(key));
                             out.put("headers", hs);
                             deliverFetch(id, out);
-                        } catch (Exception e) { deliverFetch(id, new JSONObject().put("error", e.getMessage())); }
+                        } catch (Exception e) { deliverFetch(id, errorData(e.getMessage())); }
                     }
                 });
-            } catch (Exception e) { deliverFetch(id, new JSONObject().put("error", e.getMessage())); }
+            } catch (Exception e) { deliverFetch(id, errorData(e.getMessage())); }
         }
         private JSONObject errorData(String message) { JSONObject o = new JSONObject(); try { o.put("error", message); } catch (Exception ignored) {} return o; }
         private void deliverFetch(String id, JSONObject data) {
