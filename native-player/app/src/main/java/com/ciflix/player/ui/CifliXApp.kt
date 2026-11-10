@@ -22,6 +22,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ciflix.player.data.StremioAddonClient
+import com.ciflix.player.data.StreamItem
+import kotlinx.coroutines.launch
 
 private data class Shelf(val title: String, val items: List<String>)
 
@@ -61,9 +64,9 @@ fun CifliXApp() {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("CIFLIX ORIGINAL", color = Color(0xFFBBA6FF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Text("عالم الترفيه\nبين يديك", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 39.sp)
-                    Text("أضف مصادرك وشاهد محتواك من مكان واحد", color = Color.LightGray)
+                    Text("أضف إضافات Stremio واكتشف مصادر التشغيل", color = Color.LightGray)
                     Button(onClick = { showAddSource = true }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9B7BFF))) {
-                        Text("إضافة مصدر", color = Color.Black)
+                        Text("إضافة إضافة", color = Color.Black)
                     }
                 }
             }
@@ -89,26 +92,56 @@ fun CifliXApp() {
         }
     }
     if (showAddSource) {
-        var name by remember { mutableStateOf("") }
-        var url by remember { mutableStateOf("") }
-        var type by remember { mutableStateOf("JSON Manifest") }
+        var addonUrl by remember { mutableStateOf("") }
+        var contentId by remember { mutableStateOf("tt") }
+        var status by remember { mutableStateOf("أدخل رابط Manifest لإضافة Stremio، ثم IMDb ID لجلب مصادر التشغيل.") }
+        var loading by remember { mutableStateOf(false) }
+        var streams by remember { mutableStateOf<List<StreamItem>>(emptyList()) }
+        val scope = rememberCoroutineScope()
         AlertDialog(
-            onDismissRequest = { showAddSource = false },
-            title = { Text("إضافة مصدر") },
+            onDismissRequest = { if (!loading) showAddSource = false },
+            title = { Text("إضافة Stremio") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(name, { name = it }, label = { Text("اسم المصدر") }, singleLine = true)
-                    OutlinedTextField(url, { url = it }, label = { Text("رابط المصدر") }, singleLine = true)
-                    Text("نوع المصدر: $type", style = MaterialTheme.typography.bodySmall)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("JSON Manifest", "M3U", "Stremio").forEach {
-                            FilterChip(selected = type == it, onClick = { type = it }, label = { Text(it) })
+                Column(verticalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState())) {
+                    OutlinedTextField(addonUrl, { addonUrl = it }, label = { Text("رابط Manifest") }, placeholder = { Text("https://addon.example/manifest.json") }, singleLine = true)
+                    OutlinedTextField(contentId, { contentId = it }, label = { Text("IMDb ID للفيلم") }, placeholder = { Text("tt1234567") }, singleLine = true)
+                    Text(status, style = MaterialTheme.typography.bodySmall, color = if (status.startsWith("نجح")) Color(0xFF8FE3B0) else MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(
+                        enabled = !loading && addonUrl.isNotBlank(),
+                        onClick = {
+                            scope.launch {
+                                loading = true
+                                streams = emptyList()
+                                status = "جارٍ التحقق من الإضافة..."
+                                try {
+                                    val addon = StremioAddonClient.install(addonUrl)
+                                    status = "نجح التحقق: ${addon.name} • الأنواع: ${addon.types.joinToString().ifBlank { "غير محددة" }}\nجارٍ جلب المصادر..."
+                                    if (contentId.startsWith("tt")) {
+                                        streams = StremioAddonClient.getStreams(addon.manifestUrl, "movie", contentId)
+                                        status = "نجح الاتصال • تم العثور على ${streams.size} مصدر"
+                                    } else {
+                                        status = "نجح التحقق من الإضافة. أدخل IMDb ID يبدأ بـ tt لجلب مصادر الفيلم."
+                                    }
+                                } catch (e: Exception) {
+                                    status = "تعذّر الاتصال: ${e.message ?: "خطأ غير معروف"}"
+                                } finally { loading = false }
+                            }
+                        }
+                    ) {
+                        if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        else Text("التحقق وجلب المصادر")
+                    }
+                    streams.forEachIndexed { index, stream ->
+                        Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1C2B))) {
+                            Column(Modifier.fillMaxWidth().padding(10.dp)) {
+                                Text(stream.title, fontWeight = FontWeight.SemiBold)
+                                Text(if (stream.url != null) "رابط تشغيل مباشر متاح" else if (stream.infoHash != null) "مصدر تورنت (غير مشغّل حالياً)" else "مصدر بدون رابط مباشر", style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { showAddSource = false }) { Text("حفظ مبدئي") } },
-            dismissButton = { TextButton(onClick = { showAddSource = false }) { Text("إلغاء") } }
+            confirmButton = { TextButton(onClick = { if (!loading) showAddSource = false }) { Text("إغلاق") } }
         )
     }
 }
