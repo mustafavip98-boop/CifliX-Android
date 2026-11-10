@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ciflix.player.data.StremioAddonClient
 import com.ciflix.player.data.StreamItem
+import com.ciflix.player.data.M3uPlaylistClient
+import com.ciflix.player.data.M3uChannel
 import kotlinx.coroutines.launch
 
 private data class Shelf(val title: String, val items: List<String>)
@@ -130,6 +132,9 @@ fun CifliXApp() {
     }
 
     if (showAddSource) {
+        var sourceMode by remember { mutableStateOf("Stremio") }
+        var playlistUrl by remember { mutableStateOf("") }
+        var channels by remember { mutableStateOf<List<M3uChannel>>(emptyList()) }
         var addonUrl by remember { mutableStateOf("") }
         var contentId by remember { mutableStateOf("tt") }
         var status by remember { mutableStateOf("أدخل رابط Manifest لإضافة Stremio، ثم IMDb ID لجلب مصادر التشغيل.") }
@@ -138,9 +143,43 @@ fun CifliXApp() {
         val scope = rememberCoroutineScope()
         AlertDialog(
             onDismissRequest = { if (!loading) showAddSource = false },
-            title = { Text("إضافة Stremio") },
+            title = { Text("إضافة مصدر") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState())) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = sourceMode == "Stremio", onClick = { sourceMode = "Stremio" }, label = { Text("Stremio") })
+                        FilterChip(selected = sourceMode == "M3U", onClick = { sourceMode = "M3U" }, label = { Text("M3U / M3U8") })
+                    }
+                    if (sourceMode == "M3U") {
+                        OutlinedTextField(playlistUrl, { playlistUrl = it }, label = { Text("رابط قائمة M3U") }, placeholder = { Text("https://example.com/list.m3u") }, singleLine = true)
+                        Button(enabled = !loading && playlistUrl.isNotBlank(), onClick = {
+                            scope.launch {
+                                loading = true
+                                channels = emptyList()
+                                status = "جارٍ تحميل قائمة القنوات..."
+                                try {
+                                    channels = M3uPlaylistClient.load(playlistUrl)
+                                    status = "نجح تحميل ${channels.size} قناة"
+                                } catch (e: Exception) {
+                                    status = "تعذّر تحميل القائمة: ${e.message ?: "خطأ غير معروف"}"
+                                } finally { loading = false }
+                            }
+                        }) {
+                            if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("تحميل القنوات")
+                        }
+                        channels.forEach { channel ->
+                            Card(Modifier.fillMaxWidth().clickable {
+                                playingUrl = channel.url
+                                playingTitle = channel.name
+                                showAddSource = false
+                            }, colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1C2B))) {
+                                Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                                    Text(channel.name, color = Color.White, fontWeight = FontWeight.SemiBold)
+                                    Text(channel.group ?: "بدون تصنيف", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                    } else {
                     OutlinedTextField(addonUrl, { addonUrl = it }, label = { Text("رابط Manifest") }, placeholder = { Text("https://addon.example/manifest.json") }, singleLine = true)
                     OutlinedTextField(contentId, { contentId = it }, label = { Text("IMDb ID للفيلم") }, placeholder = { Text("tt1234567") }, singleLine = true)
                     Text(status, style = MaterialTheme.typography.bodySmall, color = if (status.startsWith("نجح")) Color(0xFF8FE3B0) else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -186,6 +225,7 @@ fun CifliXApp() {
                                 )
                             }
                         }
+                    }
                     }
                 }
             },
