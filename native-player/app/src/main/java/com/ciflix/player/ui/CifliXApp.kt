@@ -1,5 +1,13 @@
 package com.ciflix.player.ui
 
+import android.view.ViewGroup
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.platform.LocalContext
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -32,6 +40,8 @@ private data class Shelf(val title: String, val items: List<String>)
 fun CifliXApp() {
     var selected by remember { mutableIntStateOf(0) }
     var showAddSource by remember { mutableStateOf(false) }
+    var playingUrl by remember { mutableStateOf<String?>(null) }
+    var playingTitle by remember { mutableStateOf("") }
     val shelves = listOf(
         Shelf("أكمل المشاهدة", listOf("متابعة المشاهدة", "آخر ما شاهدت")),
         Shelf("الأكثر مشاهدة", listOf("أكشن", "خيال علمي", "دراما", "أنمي")),
@@ -91,6 +101,34 @@ fun CifliXApp() {
             Spacer(Modifier.height(24.dp))
         }
     }
+    playingUrl?.let { url ->
+        val context = LocalContext.current
+        val player = remember(url) {
+            ExoPlayer.Builder(context).build().apply {
+                setMediaItem(MediaItem.fromUri(url))
+                prepare()
+                playWhenReady = true
+            }
+        }
+        DisposableEffect(player) { onDispose { player.release() } }
+        Dialog(onDismissRequest = { playingUrl = null }) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF11121B))
+            ) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(playingTitle, color = Color.White, fontWeight = FontWeight.Bold)
+                    AndroidView(
+                        factory = { ctx -> PlayerView(ctx).apply { this.player = player; useController = true } },
+                        modifier = Modifier.fillMaxWidth().height(230.dp),
+                        update = { it.player = player }
+                    )
+                    TextButton(onClick = { playingUrl = null }) { Text("إغلاق المشغّل") }
+                }
+            }
+        }
+    }
+
     if (showAddSource) {
         var addonUrl by remember { mutableStateOf("") }
         var contentId by remember { mutableStateOf("tt") }
@@ -132,10 +170,20 @@ fun CifliXApp() {
                         else Text("التحقق وجلب المصادر")
                     }
                     streams.forEachIndexed { index, stream ->
-                        Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1C2B))) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().clickable(enabled = stream.url != null) {
+                                playingUrl = stream.url
+                                playingTitle = stream.title
+                                showAddSource = false
+                            },
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1C2B))
+                        ) {
                             Column(Modifier.fillMaxWidth().padding(10.dp)) {
                                 Text(stream.title, fontWeight = FontWeight.SemiBold)
-                                Text(if (stream.url != null) "رابط تشغيل مباشر متاح" else if (stream.infoHash != null) "مصدر تورنت (غير مشغّل حالياً)" else "مصدر بدون رابط مباشر", style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    if (stream.url != null) "اضغط للتشغيل داخل التطبيق" else if (stream.infoHash != null) "مصدر تورنت غير مدعوم حالياً" else "لا يحتوي رابط تشغيل مباشر",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
                             }
                         }
                     }
